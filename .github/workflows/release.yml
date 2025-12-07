@@ -3,6 +3,8 @@ name: Build and Release
 on:
   push:
     branches: [ "main" ]
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 jobs:
@@ -50,13 +52,13 @@ jobs:
       - name: Zip Linux Bundle
         run: |
           cd build/linux/x64/release/bundle/
-          zip -r ../../../../Boty-v0.1.0-Linux.zip .
+          zip -r $GITHUB_WORKSPACE/Boty-v0.1.0-Linux.zip .
           
       - name: Upload Linux Bundle
         uses: actions/upload-artifact@v4
         with:
           name: Boty-v0.1.0-Linux
-          path: build/linux/x64/release/Boty-v0.1.0-Linux.zip
+          path: Boty-v0.1.0-Linux.zip
 
   build-windows:
     runs-on: windows-latest
@@ -81,3 +83,22 @@ jobs:
         with:
           name: Boty-v0.1.0-Windows
           path: build/windows/x64/runner/Boty-v0.1.0-Windows.zip
+
+  create-release:
+    needs: [build-android, build-linux, build-windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/Boty-v0.1.0-Android/Boty-v0.1.0-Android.apk
+            artifacts/Boty-v0.1.0-Linux/Boty-v0.1.0-Linux.zip
+            artifacts/Boty-v0.1.0-Windows/Boty-v0.1.0-Windows.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
