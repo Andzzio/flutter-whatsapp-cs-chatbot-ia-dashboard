@@ -4,6 +4,7 @@ class Contact {
   final String name;
   final String phone;
   bool isBotActive;
+  bool isMuted;
   int unreadCount;
   List<Message> messages;
 
@@ -11,9 +12,15 @@ class Contact {
     required this.name,
     required this.phone,
     required this.isBotActive,
+    this.isMuted = false,
     this.unreadCount = 0,
     required this.messages,
+    this.notes = "",
+    this.tags = const [],
   });
+
+  String notes;
+  List<String> tags;
 
   factory Contact.fromJson(Map<String, dynamic> json) {
     var list = json['history'] as List;

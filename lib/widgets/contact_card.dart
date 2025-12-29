@@ -25,7 +25,43 @@ class ContactCard extends StatelessWidget {
           contact.name,
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        subtitle: Text(lastMsg, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(lastMsg, maxLines: 1, overflow: TextOverflow.ellipsis),
+            if (contact.tags.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4.0),
+                child: Wrap(
+                  spacing: 4,
+                  children: contact.tags
+                      .map(
+                        (tag) => Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: Colors.blue.withValues(alpha: 0.2),
+                            ),
+                          ),
+                          child: Text(
+                            tag,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: Colors.blue,
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+          ],
+        ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -40,6 +76,15 @@ class ContactCard extends StatelessWidget {
                 child: Text(
                   '${contact.unreadCount}',
                   style: TextStyle(color: Colors.white, fontSize: 12),
+                ),
+              ),
+            if (contact.isMuted)
+              Padding(
+                padding: const EdgeInsets.only(right: 8.0),
+                child: Icon(
+                  Icons.notifications_off_rounded,
+                  color: Colors.grey.withValues(alpha: 0.6),
+                  size: 18,
                 ),
               ),
             contact.isBotActive
