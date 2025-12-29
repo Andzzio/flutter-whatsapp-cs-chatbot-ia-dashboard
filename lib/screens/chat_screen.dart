@@ -13,6 +13,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
+import 'package:boty_flutter/widgets/order_bottom_sheet.dart';
+import 'package:boty_flutter/widgets/order_drawer.dart';
 import 'package:flutter/services.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -32,6 +34,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final LayerLink _layerLink = LayerLink();
   String _lastQuery = "";
   final Map<int, GlobalKey> _messageKeys = {};
+  bool _isBotToggling = false;
 
   void _scrollToMessage(int messageId) {
     // Small delay to ensure frame is built if coming from outside
@@ -589,6 +592,8 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  bool _showDesktopDrawer = false;
+
   @override
   Widget build(BuildContext context) {
     return Consumer<ChatProvider>(
@@ -597,6 +602,14 @@ class _ChatScreenState extends State<ChatScreen> {
           (c) => c.phone == widget.contact.phone,
           orElse: () => widget.contact,
         );
+
+        final size = MediaQuery.of(context).size;
+        final isDesktop = size.width > 900;
+
+        // Auto-close drawer if screen becomes small
+        if (!isDesktop && _showDesktopDrawer) {
+          _showDesktopDrawer = false;
+        }
 
         return Scaffold(
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -647,106 +660,163 @@ class _ChatScreenState extends State<ChatScreen> {
               ],
             ),
             actions: [
-              IconButton(
-                icon: const Icon(Icons.info_outline_rounded),
-                color: Theme.of(context).primaryColor,
-                tooltip: "Información del cliente (CRM)",
-                onPressed: () {
-                  showDialog(
-                    context: context,
-                    builder: (context) =>
-                        CrmEditDialog(contact: currentContact),
-                  );
-                },
-              ),
+              // Order Button
               IconButton(
                 icon: Icon(
-                  currentContact.isMuted
-                      ? Icons.notifications_off_rounded
-                      : Icons.notifications_active_rounded,
-                  color: currentContact.isMuted
-                      ? Colors.grey
-                      : Theme.of(context).primaryColor,
+                  Icons.receipt_long,
+                  color: _showDesktopDrawer
+                      ? Colors.blueAccent
+                      : Colors.grey[700],
                 ),
-                tooltip: currentContact.isMuted
-                    ? "Activar notificaciones"
-                    : "Silenciar notificaciones",
+                tooltip: "Crear Pedido (Mini-POS)",
                 onPressed: () {
-                  provider.toggleContactMute(currentContact.phone);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        !currentContact
-                                .isMuted // Valor invertido porque se acaba de cambiar
-                            ? "Notificaciones activadas"
-                            : "Contacto silenciado",
-                      ),
-                      duration: const Duration(seconds: 1),
-                    ),
-                  );
+                  if (isDesktop) {
+                    setState(() {
+                      _showDesktopDrawer = !_showDesktopDrawer;
+                    });
+                  } else {
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (ctx) =>
+                          OrderBottomSheet(contactPhone: currentContact.phone),
+                    );
+                  }
                 },
               ),
-              IconButton(
+              // Bot Toggle
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                child: _isBotToggling
+                    ? const Padding(
+                        padding: EdgeInsets.all(12.0),
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.green,
+                            ),
+                          ),
+                        ),
+                      )
+                    : Switch(
+                        value: currentContact.isBotActive,
+                        activeColor: Colors.green,
+                        activeTrackColor: Colors.green.withOpacity(0.2),
+                        inactiveThumbColor: Colors.grey,
+                        inactiveTrackColor: Colors.grey.withOpacity(0.2),
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        onChanged: (value) async {
+                          setState(() {
+                            _isBotToggling = true;
+                          });
+                          await provider.toggleBot(currentContact.phone, value);
+                          if (mounted) {
+                            setState(() {
+                              _isBotToggling = false;
+                            });
+                          }
+                        },
+                      ),
+              ),
+              // More Actions Menu
+              PopupMenuButton<String>(
                 icon: Icon(
-                  Icons.copy_rounded,
+                  Icons.more_vert_rounded,
                   color: Theme.of(context).primaryColor,
                 ),
-                tooltip: "Copiar número",
-                onPressed: () {
-                  Clipboard.setData(ClipboardData(text: currentContact.phone));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text("Número copiado: ${currentContact.phone}"),
-                      backgroundColor: Theme.of(context).primaryColor,
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
+                onSelected: (value) {
+                  if (value == 'crm') {
+                    showDialog(
+                      context: context,
+                      builder: (context) =>
+                          CrmEditDialog(contact: currentContact),
+                    );
+                  } else if (value == 'mute') {
+                    provider.toggleContactMute(currentContact.phone);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          !currentContact.isMuted
+                              ? "Notificaciones activadas"
+                              : "Contacto silenciado",
+                        ),
+                        duration: const Duration(seconds: 1),
+                      ),
+                    );
+                  } else if (value == 'copy') {
+                    Clipboard.setData(
+                      ClipboardData(text: currentContact.phone),
+                    );
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          "Número copiado: ${currentContact.phone}",
+                        ),
+                        backgroundColor: Theme.of(context).primaryColor,
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  }
                 },
-              ),
-              Container(
-                margin: const EdgeInsets.only(right: 16, left: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: currentContact.isBotActive
-                      ? Colors.green.withValues(alpha: 0.1)
-                      : Colors.grey.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: currentContact.isBotActive
-                        ? Colors.green.withValues(alpha: 0.3)
-                        : Colors.grey.withValues(alpha: 0.3),
+                itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                  const PopupMenuItem<String>(
+                    value: 'crm',
+                    child: ListTile(
+                      leading: Icon(Icons.info_outline_rounded),
+                      title: Text('Ver Información (CRM)'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
                   ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.smart_toy_rounded,
-                      size: 16,
-                      color: currentContact.isBotActive
-                          ? Colors.green
-                          : Colors.grey,
+                  PopupMenuItem<String>(
+                    value: 'mute',
+                    child: ListTile(
+                      leading: Icon(
+                        currentContact.isMuted
+                            ? Icons.notifications_off_rounded
+                            : Icons.notifications_active_rounded,
+                      ),
+                      title: Text(
+                        currentContact.isMuted
+                            ? 'Activar Notificaciones'
+                            : 'Silenciar',
+                      ),
+                      contentPadding: EdgeInsets.zero,
                     ),
-                    const SizedBox(width: 4),
-                    Switch(
-                      value: currentContact.isBotActive,
-                      activeColor: Colors.green,
-                      activeTrackColor: Colors.green.withValues(alpha: 0.2),
-                      inactiveThumbColor: Colors.grey,
-                      inactiveTrackColor: Colors.grey.withValues(alpha: 0.2),
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      onChanged: (value) {
-                        provider.toggleBot(currentContact.phone, value);
-                      },
+                  ),
+                  const PopupMenuItem<String>(
+                    value: 'copy',
+                    child: ListTile(
+                      leading: Icon(Icons.copy_rounded),
+                      title: Text('Copiar Número'),
+                      contentPadding: EdgeInsets.zero,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ],
           ),
-          body: Column(
+          body: Row(
             children: [
-              Expanded(child: _buildMessageList(currentContact)),
-              _buildInputArea(context, currentContact),
+              Expanded(
+                flex: 6,
+                child: Column(
+                  children: [
+                    Expanded(child: _buildMessageList(currentContact)),
+                    _buildInputArea(context, currentContact),
+                  ],
+                ),
+              ),
+              if (isDesktop && _showDesktopDrawer)
+                VerticalDivider(width: 1, color: Colors.grey[200]),
+              if (isDesktop && _showDesktopDrawer)
+                Expanded(
+                  flex: 4,
+                  child: OrderDrawer(contactPhone: currentContact.phone),
+                ),
             ],
           ),
         );

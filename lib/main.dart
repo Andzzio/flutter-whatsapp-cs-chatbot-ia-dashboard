@@ -1,4 +1,5 @@
 import 'package:boty_flutter/providers/chat_provider.dart';
+import 'package:boty_flutter/providers/order_provider.dart';
 import 'package:boty_flutter/providers/theme_provider.dart';
 import 'package:boty_flutter/screens/home_screen.dart';
 import 'package:flutter/material.dart';
@@ -28,6 +29,7 @@ class MainApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => ChatProvider()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => OrderProvider()),
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, child) {

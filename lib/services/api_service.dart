@@ -116,4 +116,37 @@ class ApiService {
       return false;
     }
   }
+
+  Future<bool> deleteMessage(String token, int msgId) async {
+    try {
+      final response = await http.delete(
+        Uri.parse("$baseUrl/api/messages/$msgId/delete/"),
+        headers: {"Authorization": token},
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint("Error deletting message: $e");
+      return false;
+    }
+  }
+
+  Future<bool> createOrder(
+    String token,
+    String phone,
+    List<dynamic> items,
+  ) async {
+    try {
+      final body = {"items": items.map((i) => i.toJson()).toList()};
+
+      final response = await http.post(
+        Uri.parse("$baseUrl/api/contacts/$phone/create-order/"),
+        headers: {"Authorization": token, "Content-Type": "application/json"},
+        body: json.encode(body),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint("Error creating order: $e");
+      return false;
+    }
+  }
 }

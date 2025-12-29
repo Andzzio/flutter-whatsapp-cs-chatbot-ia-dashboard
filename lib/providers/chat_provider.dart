@@ -9,7 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:boty_flutter/services/notification_service.dart';
 import 'dart:convert';
 
-enum ChatFilter { all, unread, botActive, botInactive }
+enum ChatFilter { all, unread, botActive, botInactive, needsAttention }
 
 class ChatProvider extends ChangeNotifier {
   final ApiService _apiService = ApiService();
@@ -34,6 +34,8 @@ class ChatProvider extends ChangeNotifier {
         return _contacts.where((c) => c.isBotActive).toList();
       case ChatFilter.botInactive:
         return _contacts.where((c) => !c.isBotActive).toList();
+      case ChatFilter.needsAttention:
+        return _contacts.where((c) => c.needsHumanAttention).toList();
       case ChatFilter.all:
         return _contacts;
     }
@@ -255,6 +257,13 @@ class ChatProvider extends ChangeNotifier {
       );
 
       _contacts[index].messages.add(pendingMessage);
+      // Actualizar timestamp manualmente para el sort inmediato
+      _contacts[index].lastActivity = DateTime.now();
+
+      // Mover al inicio de la lista
+      final contactToMove = _contacts.removeAt(index);
+      _contacts.insert(0, contactToMove);
+
       notifyListeners();
     }
 
@@ -272,6 +281,27 @@ class ChatProvider extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint("Error sending message: $e");
+      _sync();
+    }
+  }
+
+  Future<void> deleteMessage(String phone, int msgId) async {
+    if (_apiToken.isEmpty) return;
+
+    // Optimistic Update
+    final index = _contacts.indexWhere((c) => c.phone == phone);
+    if (index != -1) {
+      _contacts[index].messages.removeWhere((m) => m.id == msgId);
+      notifyListeners();
+    }
+
+    try {
+      final success = await _apiService.deleteMessage(_apiToken, msgId);
+      if (!success) {
+        // Revertir si falla (necesitaríamos mantener una copia o resync)
+        _sync(); // Resync para asegurar consistencia
+      }
+    } catch (e) {
       _sync();
     }
   }

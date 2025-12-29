@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 
 class FullScreenImage extends StatelessWidget {
   final String imageUrl;
   final Map<String, String>? headers;
   final String heroTag;
+  final File? imageFile;
 
   const FullScreenImage({
     super.key,
     required this.imageUrl,
     this.headers,
     required this.heroTag,
+    this.imageFile,
   });
 
   @override
@@ -26,26 +29,30 @@ class FullScreenImage extends StatelessWidget {
                 boundaryMargin: const EdgeInsets.all(20),
                 minScale: 0.5,
                 maxScale: 4,
-                child: Image.network(
-                  imageUrl,
-                  headers: headers,
-                  fit: BoxFit.contain,
-                  loadingBuilder: (context, child, loadingProgress) {
-                    if (loadingProgress == null) return child;
-                    return const Center(
-                      child: CircularProgressIndicator(color: Colors.white),
-                    );
-                  },
-                  errorBuilder: (context, error, stackTrace) {
-                    return const Center(
-                      child: Icon(
-                        Icons.broken_image_rounded,
-                        color: Colors.white,
-                        size: 50,
+                child: imageFile != null
+                    ? Image.file(imageFile!, fit: BoxFit.contain)
+                    : Image.network(
+                        imageUrl,
+                        headers: headers,
+                        fit: BoxFit.contain,
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return const Center(
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                            ),
+                          );
+                        },
+                        errorBuilder: (context, error, stackTrace) {
+                          return const Center(
+                            child: Icon(
+                              Icons.broken_image_rounded,
+                              color: Colors.white,
+                              size: 50,
+                            ),
+                          );
+                        },
                       ),
-                    );
-                  },
-                ),
               ),
             ),
           ),

@@ -1,7 +1,9 @@
 import 'package:boty_flutter/providers/chat_provider.dart';
 import 'package:boty_flutter/screens/chat_screen.dart';
 import 'package:boty_flutter/screens/settings_screen.dart';
+import 'package:boty_flutter/widgets/animated_refresh_button.dart';
 import 'package:boty_flutter/widgets/contact_card.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -241,6 +243,15 @@ class HomeScreen extends StatelessWidget {
               color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
+          const SizedBox(width: 8),
+          AnimatedRefreshButton(
+            onPressed: () async {
+              await Provider.of<ChatProvider>(
+                context,
+                listen: false,
+              ).refreshContacts();
+            },
+          ),
           const Spacer(),
           Consumer<ChatProvider>(
             builder: (context, provider, _) {
@@ -272,6 +283,23 @@ class HomeScreen extends StatelessWidget {
                         value: ChatFilter.botInactive,
                         child: Text('Bot Inactivo'),
                       ),
+                      const PopupMenuItem<ChatFilter>(
+                        value: ChatFilter.needsAttention,
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.warning_amber_rounded,
+                              size: 16,
+                              color: Colors.red,
+                            ),
+                            SizedBox(width: 8),
+                            Text(
+                              'Requiere Atención',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
               );
             },
@@ -286,26 +314,37 @@ class HomeScreen extends StatelessWidget {
       builder: (context, provider, child) {
         final contacts = provider.contacts;
         if (contacts.isEmpty) return _buildEmptyState();
-        return ListView.builder(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          itemCount: contacts.length,
-          itemBuilder: (BuildContext context, int index) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: ContactCard(
-                contact: contacts[index],
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          ChatScreen(contact: contacts[index]),
+        return CustomScrollView(
+          physics: const BouncingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics(),
+          ),
+          slivers: [
+            CupertinoSliverRefreshControl(
+              onRefresh: () => provider.refreshContacts(),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate((context, index) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: ContactCard(
+                      contact: contacts[index],
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                ChatScreen(contact: contacts[index]),
+                          ),
+                        );
+                      },
                     ),
                   );
-                },
+                }, childCount: contacts.length),
               ),
-            );
-          },
+            ),
+          ],
         );
       },
     );
