@@ -1,12 +1,21 @@
 class Snippet {
-  String shortcut; // e.g., "/hola"
-  String content; // e.g., "Hola, ¿en qué puedo ayudarte hoy?"
+  final int id;
+  final String shortcut;
+  final String content;
 
-  Snippet({required this.shortcut, required this.content});
+  Snippet({required this.id, required this.shortcut, required this.content});
 
-  Map<String, dynamic> toJson() => {'shortcut': shortcut, 'content': content};
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'shortcut': shortcut,
+    'content': content,
+  };
 
   factory Snippet.fromJson(Map<String, dynamic> json) {
-    return Snippet(shortcut: json['shortcut'], content: json['content']);
+    return Snippet(
+      id: json['id'] ?? 0,
+      shortcut: json['shortcut'] ?? '',
+      content: json['content'] ?? '',
+    );
   }
 }

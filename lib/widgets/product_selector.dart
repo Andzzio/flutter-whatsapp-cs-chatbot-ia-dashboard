@@ -1,5 +1,6 @@
 import 'package:boty_flutter/providers/chat_provider.dart';
 import 'package:boty_flutter/services/api_service.dart';
+import 'package:boty_flutter/providers/order_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -28,7 +29,11 @@ class _ProductSelectorState extends State<ProductSelector> {
 
   Future<void> _fetchProducts() async {
     final token = Provider.of<ChatProvider>(context, listen: false).apiToken;
-    final products = await _apiService.getProducts(token);
+    final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+
+    // Usamos el cache del provider para evitar llamadas repetitivas
+    final products = await orderProvider.fetchProducts(_apiService, token);
+
     if (mounted) {
       setState(() {
         _products = products;
@@ -63,11 +68,13 @@ class _ProductSelectorState extends State<ProductSelector> {
               children: [
                 const Icon(Icons.add_shopping_cart, color: Colors.blueAccent),
                 const SizedBox(width: 8),
-                const Text(
-                  "Agregar Producto al Pedido",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                const Expanded(
+                  child: Text(
+                    "Agregar Producto al Pedido",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-                const Spacer(),
                 IconButton(
                   icon: const Icon(Icons.close),
                   onPressed: () => Navigator.pop(context),
@@ -96,7 +103,6 @@ class _ProductSelectorState extends State<ProductSelector> {
                       itemBuilder: (context, index) {
                         final product = _filteredProducts[index];
                         final name = product['name'] ?? "Unknown";
-                        final price = product['price'] ?? "";
                         final imgUrl = product['image_url'];
 
                         return ListTile(
@@ -108,14 +114,45 @@ class _ProductSelectorState extends State<ProductSelector> {
                                 ? Image.network(
                                     imgUrl,
                                     fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) =>
-                                        Icon(Icons.image),
+                                    loadingBuilder: (context, child, progress) {
+                                      if (progress == null) return child;
+                                      final p =
+                                          progress.expectedTotalBytes != null
+                                          ? progress.cumulativeBytesLoaded /
+                                                progress.expectedTotalBytes!
+                                          : null;
+                                      return Center(
+                                        child: Column(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            CircularProgressIndicator(
+                                              value: p,
+                                              strokeWidth: 2,
+                                            ),
+                                            if (p != null)
+                                              Text(
+                                                "${(p * 100).toInt()}%",
+                                                style: const TextStyle(
+                                                  fontSize: 8,
+                                                  color: Colors.grey,
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                    errorBuilder:
+                                        (context, error, stackTrace) =>
+                                            Icon(Icons.image),
                                   )
                                 : const Icon(Icons.image, color: Colors.grey),
                           ),
                           title: Text(name),
                           subtitle: Text(
-                            price.toString(),
+                            product['price'] is num
+                                ? "S/ ${(product['price'] as num).toStringAsFixed(2)}"
+                                : product['price'].toString(),
                             style: const TextStyle(
                               color: Colors.green,
                               fontWeight: FontWeight.bold,

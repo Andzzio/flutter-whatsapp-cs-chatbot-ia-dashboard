@@ -24,7 +24,10 @@ class OrderDrawer extends StatelessWidget {
   Future<void> _submitOrder(BuildContext context) async {
     final orderProvider = Provider.of<OrderProvider>(context, listen: false);
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
-    final apiService = ApiService();
+    final apiService = Provider.of<ApiService>(
+      context,
+      listen: false,
+    ); // Fix ApiService provider usage
 
     // Show loading
     showDialog(
@@ -33,7 +36,7 @@ class OrderDrawer extends StatelessWidget {
       builder: (_) => const Center(child: CircularProgressIndicator()),
     );
 
-    final success = await orderProvider.submitOrder(
+    final result = await orderProvider.submitOrder(
       apiService,
       chatProvider.apiToken,
       contactPhone,
@@ -41,19 +44,55 @@ class OrderDrawer extends StatelessWidget {
 
     if (context.mounted) {
       Navigator.pop(context); // Close loading
-      if (success) {
+
+      if (result.error != null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("✅ Pedido creado exitosamente")),
-        );
-        // Refresh chat to show the new order message
-        chatProvider.refreshContacts();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Error al crear pedido"),
+          SnackBar(
+            content: Text("Error: ${result.error}"),
             backgroundColor: Colors.red,
           ),
         );
+        return;
+      }
+
+      final data = result.data;
+      if (data != null) {
+        // 1. Construir texto SHURUMBA Style 👗✨
+        final items = (data['items'] as List).cast<Map<String, dynamic>>();
+        final total = data['total'];
+        final shipping = data['shipping'];
+        final discount = data['discount'];
+
+        StringBuffer buffer = StringBuffer();
+        buffer.writeln("✨ *Resumen de tu Pedido - SHURUMBA* ✨");
+        buffer.writeln("");
+        buffer.writeln("👗 *Tus prendas:*");
+        for (var item in items) {
+          buffer.writeln("- ${item['quantity']}x ${item['name']}");
+        }
+        buffer.writeln("");
+
+        if (shipping > 0) {
+          buffer.writeln("🚚 *Envío:* S/${shipping.toStringAsFixed(2)}");
+        }
+        if (discount > 0) {
+          buffer.writeln("🏷️ *Descuento:* -S/${discount.toStringAsFixed(2)}");
+        }
+
+        buffer.writeln("-------------------------");
+        buffer.writeln("💰 *TOTAL A PAGAR: S/${total.toStringAsFixed(2)}*");
+        buffer.writeln("");
+        buffer.writeln("¡Gracias por elegirnos! 💖");
+
+        // 2. Enviar mensaje como el bot
+        chatProvider.sendMessage(contactPhone, buffer.toString());
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("✅ Pedido creado y enviado")),
+        );
+
+        // Refresh chat
+        chatProvider.refreshContacts();
       }
     }
   }

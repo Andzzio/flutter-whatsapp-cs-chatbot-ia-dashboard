@@ -17,11 +17,15 @@ class CartItem {
 
   Map<String, dynamic> toJson() {
     return {
-      "retailer_id": retailerId,
-      "name": name,
+      "retailer_id": retailerId.length > 190
+          ? retailerId.substring(0, 190)
+          : retailerId,
+      "name": name.length > 450 ? name.substring(0, 450) : name,
       "unit_price": price,
       "quantity": quantity,
-      "image_url": imageUrl,
+      "image_url": imageUrl.length > 1900
+          ? imageUrl.substring(0, 1900)
+          : imageUrl,
     };
   }
 }

@@ -51,19 +51,38 @@ class ImageCacheService {
     String url,
     String mediaId, {
     Map<String, String>? headers,
+    void Function(double)? onProgress,
   }) async {
+    final client = http.Client();
     try {
       final file = await _localFile(mediaId);
-      final response = await http.get(Uri.parse(url), headers: headers);
+      final request = http.Request('GET', Uri.parse(url));
+      if (headers != null) request.headers.addAll(headers);
+
+      final response = await client.send(request);
 
       if (response.statusCode == 200) {
-        await file.writeAsBytes(response.bodyBytes);
+        final totalBytes = response.contentLength ?? 0;
+        int receivedBytes = 0;
+
+        final sink = file.openWrite();
+        await response.stream.listen((chunk) {
+          sink.add(chunk);
+          receivedBytes += chunk.length;
+          if (onProgress != null && totalBytes > 0) {
+            onProgress(receivedBytes / totalBytes);
+          }
+        }).asFuture();
+
+        await sink.flush();
+        await sink.close();
         return file;
-      } else {
-        return null;
       }
+      return null;
     } catch (e) {
       return null;
+    } finally {
+      client.close();
     }
   }
 }

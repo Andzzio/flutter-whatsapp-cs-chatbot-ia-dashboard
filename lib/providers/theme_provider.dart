@@ -35,56 +35,63 @@ class ThemeProvider extends ChangeNotifier {
 class MyThemes {
   static final lightTheme = ThemeData(
     useMaterial3: true,
-    scaffoldBackgroundColor: const Color(
-      0xFFF2F6FF,
-    ), // Fondo azul muy pálido moderno
-    primaryColor: const Color(0xFF6C63FF), // Un púrpura vibrante
+    fontFamily: 'Poppins', // If available, otherwise default
+    scaffoldBackgroundColor: const Color(0xFFF3F4F6), // Light Grey Background
+    primaryColor: const Color(0xFF7678ED), // Purple
     colorScheme: const ColorScheme.light(
-      primary: Color(0xFF6C63FF),
-      secondary: Color(0xFFFF6584), // Rosa salmón para acentos
+      primary: Color(0xFF7678ED),
+      secondary: Color(0xFFFF7A55), // Orange
       surface: Colors.white,
-      onSurface: Color(0xFF2D3436), // Texto oscuro suave
+      onSurface: Color(0xFF202022), // Dark Text
+      outline: Color(0xFFE5E7EB),
     ),
-    /* cardTheme: CardTheme(
-      elevation: 5,
-      shadowColor: Colors.black.withValues(alpha: 0.05),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-    ), */
+    canvasColor: const Color(0xFF202022), // For Drawer/Sidebar if used
+    // cardTheme commented out to avoid type mismatch in this specific environment
+    // cardTheme: const CardTheme(
+    //   elevation: 0,
+    //   color: Colors.white,
+    //   margin: EdgeInsets.symmetric(vertical: 6, horizontal: 16),
+    // ),
+    iconTheme: const IconThemeData(color: Color(0xFF202022)),
     appBarTheme: const AppBarTheme(
-      backgroundColor: Colors.transparent,
+      backgroundColor: Colors.white,
       elevation: 0,
-      iconTheme: IconThemeData(color: Color(0xFF2D3436)),
+      iconTheme: IconThemeData(color: Color(0xFF202022)),
       titleTextStyle: TextStyle(
-        color: Color(0xFF2D3436),
+        color: Color(0xFF202022),
         fontWeight: FontWeight.bold,
-        fontSize: 22,
+        fontSize: 20,
       ),
     ),
   );
 
   static final darkTheme = ThemeData(
     useMaterial3: true,
-    scaffoldBackgroundColor: const Color(0xFF1A1A2E), // Azul oscuro profundo
-    primaryColor: const Color(0xFF6C63FF),
+    fontFamily: 'Poppins',
+    scaffoldBackgroundColor: const Color(0xFF161618), // Dark Background
+    primaryColor: const Color(0xFF7678ED),
     colorScheme: const ColorScheme.dark(
-      primary: Color(0xFF6C63FF),
-      secondary: Color(0xFFFF6584),
-      surface: Color(0xFF16213E), // Tarjetas un poco más claras que el fondo
+      primary: Color(0xFF7678ED),
+      secondary: Color(0xFFFF7A55),
+      surface: Color(0xFF202022), // Dark Cards
       onSurface: Colors.white,
+      outline: Color(0xFF2D2D30),
     ),
-    /* cardTheme: CardTheme(
-      elevation: 2,
-      shadowColor: Colors.black.withValues(alpha: 0.2),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-    ), */
+    canvasColor: const Color(0xFF000000),
+    // cardTheme: const CardTheme(
+    //   elevation: 0,
+    //   color: Color(0xFF202022),
+    //   margin: EdgeInsets.symmetric(vertical: 6, horizontal: 16),
+    // ),
+    iconTheme: const IconThemeData(color: Colors.white),
     appBarTheme: const AppBarTheme(
-      backgroundColor: Colors.transparent,
+      backgroundColor: Color(0xFF202022),
       elevation: 0,
       iconTheme: IconThemeData(color: Colors.white),
       titleTextStyle: TextStyle(
         color: Colors.white,
         fontWeight: FontWeight.bold,
-        fontSize: 22,
+        fontSize: 20,
       ),
     ),
   );

@@ -26,6 +26,10 @@ class ChatProvider extends ChangeNotifier {
   // Cache local de muteados para persistencia: Phone -> isMuted
   Map<String, bool> _mutedContacts = {};
 
+  // Dashboard Cache
+  Map<String, dynamic>? _dashboardStats;
+  Map<String, dynamic>? get dashboardStats => _dashboardStats;
+
   List<Contact> get contacts {
     switch (_filter) {
       case ChatFilter.unread:
@@ -75,6 +79,9 @@ class ChatProvider extends ChangeNotifier {
       _mutedContacts = {};
     }
 
+    // 1. INSTANT LOAD: Cargar caché de contactos y dashboard
+    await _loadFromCache();
+
     await _loadSnippets();
     await _loadCrmData();
 
@@ -84,12 +91,106 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> _loadFromCache() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // Stats Cache
+    final statsString = prefs.getString('cached_dashboard_stats');
+    if (statsString != null) {
+      try {
+        _dashboardStats = json.decode(statsString);
+      } catch (e) {
+        debugPrint("Error loading stats cache: $e");
+      }
+    }
+
+    // Contacts Cache - EMERGENCY CLEAR due to freeze report
+    await prefs.remove('cached_contacts');
+    debugPrint("Contacts Cache CLEARED to resolve UI Freeze.");
+
+    // final contactsString = prefs.getString('cached_contacts');
+    // if (contactsString != null) {
+    //   try {
+    //     final List<dynamic> jsonList = json.decode(contactsString);
+    //     _contacts = jsonList.map((c) => Contact.fromJson(c)).toList();
+    //     debugPrint("Loaded ${_contacts.length} contacts from local cache.");
+    //   } catch (e) {
+    //     debugPrint("Error loading contacts cache: $e");
+    //   }
+    // }
+  }
+
+  Future<void> _saveToCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      if (_dashboardStats != null) {
+        await prefs.setString(
+          'cached_dashboard_stats',
+          json.encode(_dashboardStats),
+        );
+      }
+
+      if (_contacts.isNotEmpty) {
+        // Serializamos manual o toMap. Contact no tiene toMap/toJson publico facil,
+        // pero podemos re-usar la estructura que vino de la API si la tuvieramos,
+        // o mapearlo.
+        // Por simplicidad para este sprint, serializaremos el estado actual.
+        // Necesitamos implementar un toJson en Contact o construirlo aquí.
+        // Haremos un builder simple aquí para no tocar Contact aun.
+        final contactsJson = _contacts
+            .map(
+              (c) => {
+                "name": c.name,
+                "phone": c.phone,
+                "is_bot_active": c.isBotActive,
+                "unread_count": c.unreadCount,
+                "needs_human_attention": c.needsHumanAttention,
+                "last_activity": c.lastActivity?.toIso8601String(),
+                "tags": c.tags,
+                // Guardamos historial solo parcial (ultimos 10) para no explotar cache
+                "history": c.messages
+                    .take(10)
+                    .map(
+                      (m) => {
+                        "id": m.id,
+                        "text": m.text,
+                        "is_bot": m.isBot,
+                        "time": m.time,
+                        "type": m.type,
+                        "media_id": m.mediaId,
+                        "caption": m.caption,
+                        "is_read": true, // Asumimos leido al guardar? No.
+                      },
+                    )
+                    .toList(),
+              },
+            )
+            .toList();
+
+        await prefs.setString('cached_contacts', json.encode(contactsJson));
+      }
+    } catch (e) {
+      print("Error saving to cache: $e");
+    }
+  }
+
   Future<void> setToken(String token) async {
     _apiToken = token;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('api_token', token);
     notifyListeners();
     _startSyncLoop();
+  }
+
+  Future<void> logout() async {
+    _syncTimer?.cancel();
+    _apiToken = "";
+    _contacts = [];
+    _dashboardStats = null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('api_token', "");
+    notifyListeners();
   }
 
   void _startSyncLoop() {
@@ -129,81 +230,165 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _sync() async {
-    if (_apiToken.isEmpty) return;
+  bool _isLoadingMoreContacts = false;
+  bool _hasMoreContacts = true;
+  int _remoteOffset = 0;
+
+  Future<void> loadMoreContacts() async {
+    if (_isLoadingMoreContacts || !_hasMoreContacts || _apiToken.isEmpty) {
+      return;
+    }
+
+    _isLoadingMoreContacts = true;
+    notifyListeners(); // Optional: Show loading spinner at bottom
+
     try {
-      final newContacts = await _apiService.syncContacts(_apiToken);
+      final moreContacts = await _apiService.syncContacts(
+        _apiToken,
+        offset: _remoteOffset,
+        limit: 20,
+      );
 
-      // Procesar notificaciones y estados locales
-      for (var newContact in newContacts) {
-        // Aplicar estado 'Muted' persistido
-        if (_mutedContacts.containsKey(newContact.phone)) {
-          newContact.isMuted = _mutedContacts[newContact.phone]!;
-        }
+      if (moreContacts.isEmpty) {
+        _hasMoreContacts = false;
+        _isLoadingMoreContacts = false;
+        notifyListeners();
+        return;
+      }
 
-        // Aplicar datos CRM persistidos
-        if (_crmData.containsKey(newContact.phone)) {
-          final data = _crmData[newContact.phone]!;
-          newContact.notes = data['notes'] ?? "";
-          // Ensure proper casting for list of strings
-          newContact.tags = (data['tags'] as List)
-              .map((e) => e.toString())
-              .toList();
-        }
+      // Avanzamos offset
+      _remoteOffset += moreContacts.length;
 
-        // Detectar nuevos mensajes para notificar
-        // Comparamos con el estado anterior (_contacts)
-        final oldContactIndex = _contacts.indexWhere(
-          (c) => c.phone == newContact.phone,
-        );
+      // Filtrar duplicados
+      final currentIds = _contacts.map((c) => c.phone).toSet();
+      final uniqueNew = moreContacts
+          .where((c) => !currentIds.contains(c.phone))
+          .toList();
 
-        if (oldContactIndex != -1) {
-          final oldContact = _contacts[oldContactIndex];
-          // Si hay más mensajes que antes
-          if (newContact.messages.length > oldContact.messages.length) {
-            // Obtener los ultimos mensajes nuevos
-            // Verificamos el último mensaje
-            final lastMsg = newContact.messages.last;
-
-            // Lógica de Notificación:
-            // 1. Notificaciones globales activadas
-            // 2. Contacto NO muteado
-            // 3. Contacto NO es el chat activo actualmente
-            // 4. Mensaje NO es enviado por mi (pendiente o no) -> Asumimos we want to notify received messages.
-            //    Model Message: 'user' field usually contains the name or identifier.
-            //    Si es 'me' o isPending es true (nuestro optimista), no notificar.
-            //    Mejor check: !lastMsg.isPending && ... ?
-            //    Si el API devuelve 'user': 'ClientName', entonces es entrante.
-            //    Si devuelve 'user': 'me' (o como lo maneje el backend), es saliente.
-            //    Asumiremos que si msg.isBot == false, es del usuario (recibido por el bot).
-            //    Wait, Message model: isBot: json["is_bot"].
-            //    Si 'is_bot' es true, es mensaje DEL SISTEMA/BOT (o saliente).
-            //    Si 'is_bot' es false, es mensaje DEL USUARIO (entrante).
-            //    Queremos notificar mensajes DEL USUARIO (entrante).
-
-            if (_areNotificationsEnabled &&
-                !newContact.isMuted &&
-                newContact.phone != _currentActiveChatPhone &&
-                !lastMsg.isBot && // Es mensaje del usuario (entrante)
-                !lastMsg
-                    .isPending // No es un mensaje optimista nuestro
-                    ) {
-              // Solo notificar si es realmente reciente (para evitar spam al inicio)
-              // (Opcional, pero Sync trae todo el historial cada vez, así que detectar diferencia es clave)
-
-              _notificationService.showUserMessageNotification(
-                newContact,
-                lastMsg,
-              );
-            }
-          }
+      if (uniqueNew.isNotEmpty) {
+        _contacts.addAll(uniqueNew);
+      } else {
+        // Si todos eran duplicados, quizás deberíamos intentar buscar la siguiente página
+        // pero por seguridad simple, dejémoslo así o marquemos hasMore false si vino menos del limit.
+        if (moreContacts.length < 20) {
+          _hasMoreContacts = false;
         }
       }
 
-      _contacts = newContacts;
       notifyListeners();
     } catch (e) {
-      debugPrint("Error en provider: $e");
+      debugPrint("Error loading more contacts: $e");
+    } finally {
+      _isLoadingMoreContacts = false;
+    }
+  }
+
+  Future<void> _sync() async {
+    if (_apiToken.isEmpty) return;
+    try {
+      // Sync SIEMPRE trae la página 0 (Top 20 más recientes)
+      final latestContacts = await _apiService.syncContacts(
+        _apiToken,
+        limit: 20,
+        offset: 0,
+      );
+
+      // Reiniciar punteros de paginación
+      _remoteOffset = 20;
+      _hasMoreContacts = true; // Asumimos que puede haber más
+
+      // Estrategia de Fusión (Smart Merge):
+      // 1. Actualizar existentes (si cambiaron)
+      // 2. Insertar nuevos al inicio
+      // 3. Mantener los "viejos" que ya habíamos cargado con loadMore
+
+      // Mapa para acceso rápido por teléfono
+      final contactMap = {for (var c in _contacts) c.phone: c};
+
+      for (var newC in latestContacts) {
+        // Procesar estados locales (Muted, Tags, Notes) antes de merge
+        if (_mutedContacts.containsKey(newC.phone)) {
+          newC.isMuted = _mutedContacts[newC.phone]!;
+        }
+        if (_crmData.containsKey(newC.phone)) {
+          final data = _crmData[newC.phone]!;
+          newC.notes = data['notes'] ?? "";
+          newC.tags = (data['tags'] as List).map((e) => e.toString()).toList();
+        }
+
+        // Detección de notificación (comparando con versión en memoria)
+        if (contactMap.containsKey(newC.phone)) {
+          final oldC = contactMap[newC.phone]!;
+          if (newC.messages.isNotEmpty &&
+              newC.messages.length > oldC.messages.length) {
+            // Verificamos el último mensaje
+            // api.py devuelve "messages": reversed(recent_messages), así que el último es el más reciente.
+            final lastM = newC.messages.last;
+
+            if (_areNotificationsEnabled &&
+                !newC.isMuted &&
+                newC.phone != _currentActiveChatPhone &&
+                !lastM.isBot) {
+              _notificationService.showUserMessageNotification(newC, lastM);
+            }
+          }
+        }
+
+        // Actualizar/Insertar en mapa
+        contactMap[newC.phone] = newC;
+      }
+
+      // Reconstruir lista:
+      // Queremos que latestContacts aparezcan PRIMERO y en SU ORDEN (reciente).
+      // El resto de contactos (que no vinieron en page 0) se agregan después.
+
+      final mergedList = <Contact>[];
+      final processedPhones = <String>{};
+
+      // 1. Agregar los del sync (top 20 reales)
+      for (var c in latestContacts) {
+        mergedList.add(
+          contactMap[c.phone]!,
+        ); // Usamos la versión procesada del mapa
+        processedPhones.add(c.phone);
+      }
+
+      // 2. Agregar el resto que ya teníamos cargado (paginación previa)
+      for (var c in _contacts) {
+        if (!processedPhones.contains(c.phone)) {
+          mergedList.add(c);
+        }
+      }
+
+      _contacts = mergedList;
+      notifyListeners();
+      _saveToCache();
+    } catch (e) {
+      print("Sync error: $e");
+    }
+  }
+
+  Future<Map<String, dynamic>> fetchDashboardStats({
+    bool forceRefresh = false,
+  }) async {
+    if (_dashboardStats != null && !forceRefresh) {
+      return _dashboardStats!;
+    }
+
+    if (_apiToken.isEmpty) return {};
+
+    try {
+      final stats = await _apiService.getDashboardStats(_apiToken);
+      if (stats.isNotEmpty) {
+        _dashboardStats = stats;
+        notifyListeners();
+        // Cache the fresh stats
+        _saveToCache();
+      }
+      return stats;
+    } catch (e) {
+      debugPrint("Error fetching dashboard stats: $e");
+      return _dashboardStats ?? {};
     }
   }
 
@@ -400,14 +585,17 @@ class ChatProvider extends ChangeNotifier {
       // Default snippets
       _snippets = [
         Snippet(
+          id: 1,
           shortcut: "/hola",
           content: "Hola, ¿en qué puedo ayudarte hoy? 🌸",
         ),
         Snippet(
+          id: 2,
           shortcut: "/envio",
           content: "Realizamos envíos a todo el país. 🚚",
         ),
         Snippet(
+          id: 3,
           shortcut: "/pago",
           content: "Aceptamos Yape, Plin y Transferencia. 💳",
         ),
@@ -443,5 +631,45 @@ class ChatProvider extends ChangeNotifier {
       await _saveSnippets();
       notifyListeners();
     }
+  }
+
+  Future<void> loadMoreMessages(String phone) async {
+    final contactIndex = _contacts.indexWhere((c) => c.phone == phone);
+    if (contactIndex == -1) return;
+
+    final contact = _contacts[contactIndex];
+    if (contact.messages.isEmpty) return;
+
+    final oldestMsgId = contact.messages.first.id;
+    if (oldestMsgId == null) return;
+
+    final newMessagesData = await _apiService.getChatHistory(
+      _apiToken,
+      phone,
+      oldestMsgId,
+    );
+    if (newMessagesData.isEmpty) return;
+
+    final newMessages = newMessagesData
+        .map((m) => Message.fromJson(m))
+        .toList();
+
+    // newMessages came in correct order (Oldest -> Newer) but are OLDER than current list
+    // So we prepend them: [...newMessages, ...existing]
+    final updatedMessages = [...newMessages, ...contact.messages];
+
+    _contacts[contactIndex] = Contact(
+      name: contact.name,
+      phone: contact.phone,
+      messages: updatedMessages,
+      isBotActive: contact.isBotActive,
+      isMuted: contact.isMuted,
+      notes: contact.notes,
+      tags: contact.tags,
+      needsHumanAttention: contact.needsHumanAttention,
+      unreadCount: contact.unreadCount,
+    );
+
+    notifyListeners();
   }
 }

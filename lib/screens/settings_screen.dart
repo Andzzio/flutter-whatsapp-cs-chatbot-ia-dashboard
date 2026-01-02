@@ -3,6 +3,9 @@ import 'package:provider/provider.dart';
 import 'package:boty_flutter/providers/theme_provider.dart';
 import 'package:boty_flutter/providers/chat_provider.dart';
 import 'package:boty_flutter/screens/snippets_screen.dart';
+import 'package:boty_flutter/services/api_service.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -249,9 +252,132 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
+            const SizedBox(height: 32),
+
+            // --- SECCIÓN PELIGRO ---
+            const Text(
+              "Zona de Peligro",
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.red,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              elevation: 0,
+              color: Colors.red.withValues(alpha: 0.05),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: const BorderSide(color: Colors.red, width: 1),
+              ),
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 8,
+                ),
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.delete_forever, color: Colors.red),
+                ),
+                title: const Text(
+                  "Resetear Pedidos",
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                ),
+                subtitle: const Text(
+                  "Eliminar todos los pedidos de prueba",
+                  style: TextStyle(fontSize: 13),
+                ),
+                trailing: const Icon(
+                  Icons.warning,
+                  color: Colors.red,
+                  size: 20,
+                ),
+                onTap: _showResetOrdersDialog,
+              ),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _showResetOrdersDialog() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('⚠️ Resetear Pedidos'),
+        content: const Text(
+          '¿Estás seguro de eliminar TODOS los pedidos?\n\nEsta acción NO se puede deshacer.\n\nUsa esto solo para limpiar datos de prueba.',
+          style: TextStyle(fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              'SÍ, ELIMINAR TODO',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      await _resetOrders();
+    }
+  }
+
+  Future<void> _resetOrders() async {
+    try {
+      // Show loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      );
+
+      final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+      final response = await http.delete(
+        Uri.parse('${ApiService.baseUrl}/api/orders/reset/'),
+        headers: {'Authorization': chatProvider.apiToken},
+      );
+
+      if (mounted) {
+        Navigator.pop(context); // Close loading
+
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✅ ${data['deleted_orders']} pedidos eliminados'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          // Refresh dashboard stats
+          chatProvider.fetchDashboardStats(forceRefresh: true);
+        } else {
+          throw Exception('Status: ${response.statusCode}');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        try {
+          Navigator.pop(context); // Close loading if still open
+        } catch (_) {}
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
   }
 }

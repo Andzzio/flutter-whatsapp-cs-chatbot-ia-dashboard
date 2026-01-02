@@ -27,6 +27,8 @@ class _CachedImageBubbleState extends State<CachedImageBubble> {
   bool _isDownloading = false;
   bool _hasError = false;
 
+  double _progress = 0.0;
+
   @override
   void initState() {
     super.initState();
@@ -47,12 +49,16 @@ class _CachedImageBubbleState extends State<CachedImageBubble> {
     setState(() {
       _isDownloading = true;
       _hasError = false;
+      _progress = 0.0;
     });
 
     final file = await _cacheService.downloadImage(
       widget.imageUrl,
       widget.mediaId,
       headers: widget.authHeaders,
+      onProgress: (p) {
+        if (mounted) setState(() => _progress = p);
+      },
     );
 
     if (mounted) {
@@ -112,9 +118,20 @@ class _CachedImageBubbleState extends State<CachedImageBubble> {
 
           // Contenido central interactivo
           if (_isDownloading)
-            const CircularProgressIndicator(
-              strokeWidth: 3,
-              color: Colors.purple,
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(
+                  value: _progress,
+                  strokeWidth: 3,
+                  color: Colors.purple,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  "${(_progress * 100).toInt()}%",
+                  style: const TextStyle(fontSize: 10, color: Colors.purple),
+                ),
+              ],
             )
           else
             Column(

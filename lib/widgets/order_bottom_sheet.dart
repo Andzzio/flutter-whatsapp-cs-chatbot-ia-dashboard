@@ -22,37 +22,102 @@ class OrderBottomSheet extends StatelessWidget {
   }
 
   Future<void> _submitOrder(BuildContext context) async {
-    final orderProvider = Provider.of<OrderProvider>(context, listen: false);
-    final chatProvider = Provider.of<ChatProvider>(context, listen: false);
-    final apiService = ApiService();
+    try {
+      final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+      final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+      final apiService = ApiService(); // Direct instantiation (not a provider)
 
-    // Show loading
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
+      // Guardar referencia al ScaffoldMessenger antes del await
+      final scaffoldMessenger = ScaffoldMessenger.of(context);
+      final navigator = Navigator.of(context);
 
-    final success = await orderProvider.submitOrder(
-      apiService,
-      chatProvider.apiToken,
-      contactPhone,
-    );
+      // Show loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      );
 
-    if (context.mounted) {
-      Navigator.pop(context); // Close loading
-      if (success) {
-        Navigator.pop(context); // Close bottom sheet
+      final result = await orderProvider.submitOrder(
+        apiService,
+        chatProvider.apiToken,
+        contactPhone, // Fixed: StatelessWidget field access
+      );
+
+      if (context.mounted) {
+        navigator.pop(); // Close loading dialog
+
+        if (result.error != null) {
+          scaffoldMessenger.showSnackBar(
+            SnackBar(
+              content: Text("Error: ${result.error}"),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+
+        final data = result.data;
+        if (data != null) {
+          // 1. Construir texto SHURUMBA Style 👗✨
+          final items = (data['items'] as List).cast<Map<String, dynamic>>();
+          final total = data['total'];
+          final shipping = data['shipping'];
+          final discount = data['discount'];
+
+          StringBuffer buffer = StringBuffer();
+          buffer.writeln("✨ *Resumen de tu Pedido - SHURUMBA* ✨");
+          buffer.writeln("");
+          buffer.writeln("👗 *Tus prendas:*");
+          for (var item in items) {
+            buffer.writeln("- ${item['quantity']}x ${item['name']}");
+          }
+          buffer.writeln("");
+
+          if (shipping > 0) {
+            buffer.writeln("🚚 *Envío:* S/${shipping.toStringAsFixed(2)}");
+          }
+          if (discount > 0) {
+            buffer.writeln(
+              "🏷️ *Descuento:* -S/${discount.toStringAsFixed(2)}",
+            );
+          }
+
+          buffer.writeln("-------------------------");
+          buffer.writeln("💰 *TOTAL A PAGAR: S/${total.toStringAsFixed(2)}*");
+          buffer.writeln("");
+          buffer.writeln("¡Gracias por elegirnos! 💖");
+
+          // 2. Enviar mensaje como el bot
+          chatProvider.sendMessage(contactPhone, buffer.toString());
+
+          // 3. Feedback y cerrar
+          scaffoldMessenger.showSnackBar(
+            const SnackBar(
+              content: Text("¡Pedido enviado correctamente!"),
+              backgroundColor: Colors.green,
+            ),
+          );
+          navigator.pop(); // Close bottom sheet
+          chatProvider
+              .refreshContacts(); // Refresh chat contacts after successful order
+        }
+      }
+    } catch (e, stackTrace) {
+      debugPrint("Error en _submitOrder: $e");
+      debugPrint("StackTrace: $stackTrace");
+
+      if (context.mounted) {
+        // Close loading if open
+        try {
+          Navigator.of(context).pop();
+        } catch (_) {}
+
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("✅ Pedido creado exitosamente")),
-        );
-        // Refresh chat
-        chatProvider.refreshContacts();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Error al crear pedido"),
+          SnackBar(
+            content: Text("Error inesperado: $e"),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
           ),
         );
       }
@@ -256,6 +321,37 @@ class OrderBottomSheet extends StatelessWidget {
                 ),
                 child: Column(
                   children: [
+                    // Shipping Cost Input
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          "Envío:",
+                          style: TextStyle(fontSize: 16, color: Colors.grey),
+                        ),
+                        SizedBox(
+                          width: 100,
+                          child: TextFormField(
+                            initialValue: orderProvider.shippingCost
+                                .toStringAsFixed(2),
+                            keyboardType: TextInputType.number,
+                            textAlign: TextAlign.end,
+                            decoration: const InputDecoration(
+                              prefixText: "S/ ",
+                              isDense: true,
+                              border: UnderlineInputBorder(),
+                            ),
+                            onChanged: (value) {
+                              final val = double.tryParse(value);
+                              if (val != null) {
+                                orderProvider.setShippingCost(val);
+                              }
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [

@@ -81,6 +81,36 @@ class _CatalogDialogState extends State<CatalogDialog> {
     }
   }
 
+  Future<void> _sendCatalog() async {
+    Navigator.pop(context); // Cerrar diálogo
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text("Enviando catálogo...")));
+
+    final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+    final success = await _apiService.sendCatalog(
+      chatProvider.apiToken,
+      widget.contact.phone,
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      chatProvider.refreshContacts();
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("✅ Catálogo enviado")));
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Error al enviar catálogo"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // Responsive size: fixed on desktop, percentage on mobile
@@ -100,18 +130,35 @@ class _CatalogDialogState extends State<CatalogDialog> {
               children: [
                 const Icon(
                   Icons.storefront_rounded,
-                  size: 28,
+                  size: 24,
                   color: Colors.pinkAccent,
                 ),
                 const SizedBox(width: 8),
-                const Text(
-                  "Catálogo de Productos",
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                const Flexible(
+                  child: Text(
+                    "Catálogo de Productos",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-                const Spacer(),
+                const SizedBox(width: 8),
+                TextButton.icon(
+                  onPressed: () => _sendCatalog(),
+                  icon: const Icon(Icons.send_rounded, size: 16),
+                  label: const Text("Enviar", style: TextStyle(fontSize: 13)),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.blueAccent,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                  ),
+                ),
                 IconButton(
-                  icon: const Icon(Icons.close),
+                  icon: const Icon(Icons.close, size: 20),
                   onPressed: () => Navigator.pop(context),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
                 ),
               ],
             ),
@@ -169,7 +216,18 @@ class _CatalogDialogState extends State<CatalogDialog> {
                         final product = _filteredProducts[index];
                         final imageUrl = product['image_url'] ?? "";
                         final name = product['name'] ?? "Producto sin nombre";
-                        final price = product['price'] ?? "";
+                        // Safe Price handling (Backend sends float or string)
+                        final rawPrice = product['price'];
+                        String priceDisplay = "";
+                        if (rawPrice != null) {
+                          if (rawPrice is num && rawPrice > 0) {
+                            priceDisplay = "S/ ${rawPrice.toStringAsFixed(2)}";
+                          } else if (rawPrice is String &&
+                              rawPrice.isNotEmpty) {
+                            priceDisplay = rawPrice;
+                          }
+                        }
+
                         final retailerId = product['retailer_id'] ?? "";
 
                         return Card(
@@ -189,6 +247,36 @@ class _CatalogDialogState extends State<CatalogDialog> {
                                       ? Image.network(
                                           imageUrl,
                                           fit: BoxFit.cover,
+                                          loadingBuilder: (context, child, progress) {
+                                            if (progress == null) return child;
+                                            final p =
+                                                progress.expectedTotalBytes !=
+                                                    null
+                                                ? progress.cumulativeBytesLoaded /
+                                                      progress
+                                                          .expectedTotalBytes!
+                                                : null;
+                                            return Center(
+                                              child: Column(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
+                                                children: [
+                                                  CircularProgressIndicator(
+                                                    value: p,
+                                                    strokeWidth: 2,
+                                                  ),
+                                                  if (p != null)
+                                                    Text(
+                                                      "${(p * 100).toInt()}%",
+                                                      style: const TextStyle(
+                                                        fontSize: 10,
+                                                        color: Colors.grey,
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                            );
+                                          },
                                           errorBuilder: (ctx, err, stack) =>
                                               const Center(
                                                 child: Icon(
@@ -222,9 +310,9 @@ class _CatalogDialogState extends State<CatalogDialog> {
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                       const SizedBox(height: 4),
-                                      if (price.isNotEmpty)
+                                      if (priceDisplay.isNotEmpty)
                                         Text(
-                                          price,
+                                          priceDisplay,
                                           style: const TextStyle(
                                             color: Colors.green,
                                             fontWeight: FontWeight.bold,

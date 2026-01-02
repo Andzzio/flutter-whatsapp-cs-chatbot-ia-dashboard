@@ -7,10 +7,43 @@ class OrderProvider extends ChangeNotifier {
 
   List<CartItem> get cartItems => _cartItems;
 
+  double _shippingCost = 10.0;
+  double get shippingCost => _shippingCost;
+
+  // Product Cache
+  List<dynamic> _productCache = [];
+  List<dynamic> get productCache => _productCache;
+
+  void setShippingCost(double cost) {
+    _shippingCost = cost;
+    notifyListeners();
+  }
+
+  Future<List<dynamic>> fetchProducts(
+    ApiService apiService,
+    String token, {
+    bool forceRefresh = false,
+  }) async {
+    if (_productCache.isNotEmpty && !forceRefresh) {
+      return _productCache;
+    }
+
+    try {
+      final products = await apiService.getProducts(token);
+      if (products.isNotEmpty) {
+        _productCache = products;
+        notifyListeners();
+      }
+      return products;
+    } catch (e) {
+      debugPrint("Error fetching products in provider: $e");
+      return [];
+    }
+  }
+
   double get subtotal => _cartItems.fold(0, (sum, item) => sum + item.total);
 
-  // Could add delivery costs logic later
-  double get total => subtotal;
+  double get total => subtotal + _shippingCost;
 
   void addToCart(dynamic productMap) {
     final retailerId = productMap['retailer_id'] ?? "";
@@ -72,23 +105,29 @@ class OrderProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> submitOrder(
+  Future<({Map<String, dynamic>? data, String? error})> submitOrder(
     ApiService apiService,
     String token,
     String phone,
   ) async {
-    if (_cartItems.isEmpty) return false;
+    if (_cartItems.isEmpty) return (data: null, error: "Carrito vacío");
 
     try {
-      final success = await apiService.createOrder(token, phone, _cartItems);
-      if (success) {
+      final result = await apiService.createOrder(
+        token,
+        phone,
+        _cartItems,
+        shippingCost: _shippingCost,
+      );
+
+      if (result.error == null && result.data != null) {
         clearCart();
-        return true;
+        return (data: result.data, error: null); // Success
       }
-      return false;
+      return (data: null, error: result.error ?? "Error desconocido");
     } catch (e) {
       debugPrint("Order submit error: $e");
-      return false;
+      return (data: null, error: "Excepción interna: $e");
     }
   }
 }

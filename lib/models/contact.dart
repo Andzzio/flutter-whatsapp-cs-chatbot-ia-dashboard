@@ -43,6 +43,9 @@ class Contact {
       needsHumanAttention: json['needs_human_attention'] ?? false,
       messages: messagesList,
       lastActivity: lastActivityDate,
+      tags:
+          (json['tags'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+          [],
     );
   }
 }

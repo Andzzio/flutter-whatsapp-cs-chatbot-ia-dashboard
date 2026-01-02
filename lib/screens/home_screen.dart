@@ -1,80 +1,483 @@
 import 'package:boty_flutter/providers/chat_provider.dart';
+import 'package:boty_flutter/screens/analytics_screen.dart';
 import 'package:boty_flutter/screens/chat_screen.dart';
+import 'package:boty_flutter/screens/orders_screen.dart';
+import 'package:boty_flutter/screens/products_screen.dart';
 import 'package:boty_flutter/screens/settings_screen.dart';
-import 'package:boty_flutter/widgets/animated_refresh_button.dart';
+import 'package:boty_flutter/screens/snippets_screen.dart';
 import 'package:boty_flutter/widgets/contact_card.dart';
+import 'package:boty_flutter/widgets/side_menu.dart'; // Import SideMenu
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  final ScrollController _statsScrollController = ScrollController();
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = "";
+  String _sortBy = 'newest'; // 'newest' or 'oldest'
+  String _selectedMenuItem = 'Inicio'; // For SideMenu selection
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<ChatProvider>(context, listen: false).fetchDashboardStats();
+    });
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text.toLowerCase();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _statsScrollController.dispose();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _refreshData() async {
+    final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+    await Future.wait([
+      chatProvider.fetchDashboardStats(forceRefresh: true),
+      chatProvider.refreshContacts(),
+    ]);
+  }
+
+  void _onMenuSelect(String item) {
+    if (item == "Log out") {
+      Provider.of<ChatProvider>(context, listen: false).logout();
+      // Assuming there is a listener in Main or AuthWrapper that handles null token to redirect
+      return;
+    }
+
+    // Navigate to new screens
+    if (item == "Pedidos") {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const OrdersScreen()),
+      );
+      return;
+    }
+
+    if (item == "Productos") {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const ProductsScreen()),
+      );
+      return;
+    }
+
+    if (item == "Estadísticas") {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const AnalyticsScreen()),
+      );
+      return;
+    }
+
+    // Handle specific navigations if needed for Profile/Edit
+
+    setState(() {
+      _selectedMenuItem = item;
+    });
+
+    // Close drawer if open (Mobile)
+    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+      Navigator.pop(context);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // Colores base para tarjetas de dashboard
-    final cardColors = [
-      const Color(0xFF6C63FF), // Purple
-      const Color(0xFFFF6584), // Salmon
-      const Color(0xFF4ECDC4), // Teal
-    ];
+    // Responsive Layout Decision
+    final width = MediaQuery.of(context).size.width;
+    final isDesktop = width > 900;
+    final isTablet = width > 600 && width <= 900;
+    final isMobile = width <= 600;
 
     return Scaffold(
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final isDesktop = constraints.maxWidth > 800;
+      key: _scaffoldKey, // Key for controlling drawer
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      drawer: isMobile
+          ? SideMenu(
+              isMobile: true,
+              selectedItem: _selectedMenuItem,
+              onSelect: _onMenuSelect,
+            )
+          : null,
+      body: Row(
+        children: [
+          // Sidebar for Desktop/Tablet
+          if (isDesktop)
+            SideMenu(selectedItem: _selectedMenuItem, onSelect: _onMenuSelect),
+          if (isTablet)
+            SideMenu(
+              compact: true,
+              selectedItem: _selectedMenuItem,
+              onSelect: _onMenuSelect,
+            ),
 
-            if (isDesktop) {
-              return _buildDesktopLayout(context, cardColors);
-            }
-
-            return Column(
-              children: [
-                _buildHeader(context),
-                const SizedBox(height: 20),
-                // --- CAROUSEL DE ESTADÍSTICAS (MOCK) ---
-                SizedBox(
-                  height: 200,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 10,
-                    ),
-                    children: [
-                      _buildDashboardCard(
+          Expanded(
+            child: SafeArea(
+              child: RefreshIndicator(
+                color: Theme.of(context).primaryColor,
+                onRefresh: _refreshData,
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: (ScrollNotification scrollInfo) {
+                    if (scrollInfo.metrics.pixels >=
+                        scrollInfo.metrics.maxScrollExtent - 200) {
+                      Provider.of<ChatProvider>(
                         context,
-                        title: "Mensajes Totales",
-                        subtitle: "1,245",
-                        icon: Icons.message_rounded,
-                        color: cardColors[0],
+                        listen: false,
+                      ).loadMoreContacts();
+                    }
+                    return false;
+                  },
+                  child: CustomScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    controller:
+                        _statsScrollController, // Usamos el controlador existente o null si no se requiere scroll to top explícito
+                    slivers: [
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+                        sliver: SliverToBoxAdapter(
+                          child: _buildHeader(context, isMobile),
+                        ),
                       ),
-                      const SizedBox(width: 16),
-                      _buildDashboardCard(
-                        context,
-                        title: "Usuarios Activos",
-                        subtitle: "34",
-                        icon: Icons.people_alt_rounded,
-                        color: cardColors[1],
+                      SliverPadding(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        sliver: SliverToBoxAdapter(
+                          child: _buildStatsSection(context),
+                        ),
                       ),
-                      const SizedBox(width: 16),
-                      _buildDashboardCard(
-                        context,
-                        title: "Bot Status",
-                        subtitle: "Online",
-                        icon: Icons.smart_toy_rounded,
-                        color: cardColors[2],
-                      ),
+                      SliverToBoxAdapter(child: _buildFilterHeader(context)),
+                      _buildContactList(context),
                     ],
                   ),
                 ),
-                const SizedBox(height: 30),
-                _buildFilterHeader(context),
-                const SizedBox(height: 10),
-                Expanded(child: _buildContactList(context)),
+              ),
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        elevation: 4,
+        backgroundColor: Theme.of(context).primaryColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const SnippetsScreen()),
+          );
+        },
+        tooltip: "Snippets",
+        child: const Icon(Icons.flash_on, color: Colors.white),
+      ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context, bool isMobile) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            // Mobile Menu Button
+            if (isMobile) ...[
+              Container(
+                height: 48,
+                width: 48,
+                margin: const EdgeInsets.only(right: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.menu_rounded, size: 24),
+                  color: Colors.grey[800],
+                  onPressed: () {
+                    _scaffoldKey.currentState?.openDrawer();
+                  },
+                ),
+              ),
+            ],
+
+            Expanded(
+              child: Container(
+                height: 48, // Standard iOS height
+                decoration: BoxDecoration(
+                  color: Colors.white, // Pure white for clean look
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: TextField(
+                  controller: _searchController,
+                  textAlignVertical: TextAlignVertical.center,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontFamily: 'Poppins',
+                    fontWeight: FontWeight.w500,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: "Search contacts...",
+                    hintStyle: TextStyle(
+                      color: Colors.grey[400],
+                      fontFamily: 'Poppins',
+                      fontWeight: FontWeight.w400,
+                    ),
+                    prefixIcon: Icon(
+                      Icons.search_rounded,
+                      color: Theme.of(context).primaryColor.withOpacity(0.7),
+                      size: 22,
+                    ),
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Container(
+              height: 48,
+              width: 48,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.04),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: IconButton(
+                icon: const Icon(Icons.settings_outlined, size: 22),
+                color: Colors.grey[700],
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 32),
+        // Title Row
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  // Update Title based on selection
+                  _selectedMenuItem == "Inicio"
+                      ? "Dashboard"
+                      : _selectedMenuItem,
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'Poppins',
+                    letterSpacing: -0.5,
+                    color: Theme.of(context).colorScheme.onBackground,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Text(
+                      "Overview",
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontFamily: 'Poppins',
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey[500],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.secondary.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        "10 online",
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).colorScheme.secondary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ],
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  // Stats section
+  Widget _buildStatsSection(BuildContext context) {
+    return Consumer<ChatProvider>(
+      builder: (context, provider, child) {
+        final stats = provider.dashboardStats;
+        if (stats == null) {
+          return const SizedBox(
+            height: 120,
+            child: Center(child: CupertinoActivityIndicator()),
+          );
+        }
+        return _buildStatsList(stats);
+      },
+    );
+  }
+
+  Widget _buildStatsList(Map<String, dynamic> data) {
+    final metrics = [
+      _Metric(
+        "Sales",
+        "S/ ${data['sales_today'] ?? '0.00'}",
+        Icons.attach_money_rounded,
+        const Color(0xFF4CAF50),
+      ),
+      _Metric(
+        "Pending",
+        "${data['pending_orders'] ?? '0'}",
+        Icons.pending_rounded,
+        const Color(0xFFFF9800),
+      ),
+      _Metric(
+        "Unread",
+        "${data['unread_chats'] ?? '0'}",
+        Icons.mark_chat_unread_rounded,
+        const Color(0xFF9C27B0),
+      ),
+      _Metric(
+        "Conversion",
+        "${data['conversion_rate'] ?? '0'}%",
+        Icons.pie_chart_rounded,
+        const Color(0xFF2196F3),
+      ),
+      _Metric(
+        "Avg. Ticket",
+        "S/ ${data['avg_ticket'] ?? '0.00'}",
+        Icons.receipt_long_rounded,
+        const Color(0xFF009688),
+      ),
+    ];
+
+    return SizedBox(
+      height: 110,
+      child: Listener(
+        onPointerSignal: (event) {
+          if (event is PointerScrollEvent) {
+            final offset = event.scrollDelta.dy;
+            if (_statsScrollController.hasClients) {
+              final newOffset = _statsScrollController.offset + offset;
+              _statsScrollController.jumpTo(
+                newOffset.clamp(
+                  0.0,
+                  _statsScrollController.position.maxScrollExtent,
+                ),
+              );
+            }
+          }
+        },
+        child: ListView.separated(
+          controller: _statsScrollController,
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          itemCount: metrics.length,
+          separatorBuilder: (ctx, i) => const SizedBox(width: 16),
+          itemBuilder: (context, index) {
+            final m = metrics[index];
+            return Container(
+              width: 130,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.03),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: m.color.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(m.icon, color: m.color, size: 18),
+                  ),
+                  const Spacer(),
+                  Text(
+                    m.value,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'Poppins',
+                      color: Color(0xFF2D3142),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    m.title,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      fontFamily: 'Poppins',
+                      color: Colors.grey[500],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
             );
           },
         ),
@@ -82,227 +485,134 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDesktopLayout(BuildContext context, List<Color> cardColors) {
-    return Padding(
-      padding: const EdgeInsets.all(32.0),
-      child: Column(
-        children: [
-          _buildHeader(context, isDesktop: true),
-          const SizedBox(height: 40),
-          Row(
-            children: [
-              Expanded(
-                child: _buildDashboardCard(
-                  context,
-                  title: "Mensajes Totales",
-                  subtitle: "1,245",
-                  icon: Icons.message_rounded,
-                  color: cardColors[0],
-                  isDesktop: true,
-                ),
-              ),
-              const SizedBox(width: 24),
-              Expanded(
-                child: _buildDashboardCard(
-                  context,
-                  title: "Usuarios Activos",
-                  subtitle: "34",
-                  icon: Icons.people_alt_rounded,
-                  color: cardColors[1],
-                  isDesktop: true,
-                ),
-              ),
-              const SizedBox(width: 24),
-              Expanded(
-                child: _buildDashboardCard(
-                  context,
-                  title: "Bot Status",
-                  subtitle: "Online",
-                  icon: Icons.smart_toy_rounded,
-                  color: cardColors[2],
-                  isDesktop: true,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 40),
-          _buildFilterHeader(context),
-          const SizedBox(height: 20),
-          Expanded(
-            child: Consumer<ChatProvider>(
-              builder: (context, provider, child) {
-                final contacts = provider.contacts;
-                if (contacts.isEmpty) return _buildEmptyState();
-
-                return GridView.builder(
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 400,
-                    childAspectRatio: 2.5,
-                    crossAxisSpacing: 20,
-                    mainAxisSpacing: 20,
-                  ),
-                  itemCount: contacts.length,
-                  itemBuilder: (context, index) {
-                    return ContactCard(
-                      contact: contacts[index],
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                ChatScreen(contact: contacts[index]),
-                          ),
-                        );
-                      },
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeader(BuildContext context, {bool isDesktop = false}) {
-    return Padding(
-      padding: isDesktop
-          ? EdgeInsets.zero
-          : const EdgeInsets.fromLTRB(24, 20, 24, 10),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                "Hola Admin,",
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.onSurface.withValues(alpha: 0.6),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                "Dashboard",
-                style: TextStyle(
-                  fontSize: isDesktop ? 36 : 28,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
-              ),
-            ],
-          ),
-          Container(
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              borderRadius: BorderRadius.circular(15),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: IconButton(
-              icon: Icon(
-                Icons.settings_rounded,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const SettingsScreen(),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildFilterHeader(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 24,
-      ), // Keep padding for mobile consistent with old Code
+    return Container(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       child: Row(
         children: [
-          Text(
-            "Chats Recientes",
+          const Text(
+            "Sort by",
             style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: Theme.of(context).colorScheme.onSurface,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              fontFamily: 'Poppins', // Corrected fontFamily
+              color: Colors.grey,
             ),
           ),
           const SizedBox(width: 8),
-          AnimatedRefreshButton(
-            onPressed: () async {
-              await Provider.of<ChatProvider>(
-                context,
-                listen: false,
-              ).refreshContacts();
+
+          // Smart Sort Dropdown (Apple Style)
+          PopupMenuButton<String>(
+            elevation: 8,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            offset: const Offset(0, 40),
+            child: Row(
+              children: [
+                Text(
+                  _sortBy == 'newest' ? "Newest First" : "Oldest First",
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).primaryColor,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  size: 18,
+                  color: Theme.of(context).primaryColor,
+                ),
+              ],
+            ),
+            onSelected: (val) {
+              setState(() {
+                _sortBy = val;
+              });
             },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'newest',
+                child: Row(
+                  children: [
+                    Icon(Icons.arrow_downward, size: 16),
+                    SizedBox(width: 8),
+                    Text("Newest First"),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'oldest',
+                child: Row(
+                  children: [
+                    Icon(Icons.arrow_upward, size: 16),
+                    SizedBox(width: 8),
+                    Text("Oldest First"),
+                  ],
+                ),
+              ),
+            ],
           ),
+
           const Spacer(),
-          Consumer<ChatProvider>(
-            builder: (context, provider, _) {
-              return PopupMenuButton<ChatFilter>(
+
+          // Filter Button
+          Container(
+            height: 36,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Consumer<ChatProvider>(
+              builder: (context, provider, _) => PopupMenuButton<ChatFilter>(
                 icon: Icon(
                   Icons.filter_list_rounded,
-                  color: provider.filter == ChatFilter.all
-                      ? Colors.grey[400]
-                      : Theme.of(context).primaryColor,
+                  size: 20,
+                  color: Theme.of(context).primaryColor,
                 ),
-                onSelected: (ChatFilter result) {
-                  provider.setFilter(result);
+                elevation: 8,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                offset: const Offset(0, 45),
+                initialValue: provider.filter,
+                onSelected: (ChatFilter value) {
+                  provider.setFilter(value);
                 },
                 itemBuilder: (BuildContext context) =>
                     <PopupMenuEntry<ChatFilter>>[
-                      const PopupMenuItem<ChatFilter>(
+                      const PopupMenuItem(
                         value: ChatFilter.all,
-                        child: Text('Todos'),
+                        child: Text("All Chats"),
                       ),
-                      const PopupMenuItem<ChatFilter>(
+                      const PopupMenuItem(
                         value: ChatFilter.unread,
-                        child: Text('No leídos'),
+                        child: Text("Unread Only"),
                       ),
-                      const PopupMenuItem<ChatFilter>(
-                        value: ChatFilter.botActive,
-                        child: Text('Bot Activo'),
-                      ),
-                      const PopupMenuItem<ChatFilter>(
-                        value: ChatFilter.botInactive,
-                        child: Text('Bot Inactivo'),
-                      ),
-                      const PopupMenuItem<ChatFilter>(
+                      const PopupMenuItem(
                         value: ChatFilter.needsAttention,
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.warning_amber_rounded,
-                              size: 16,
-                              color: Colors.red,
-                            ),
-                            SizedBox(width: 8),
-                            Text(
-                              'Requiere Atención',
-                              style: TextStyle(color: Colors.red),
-                            ),
-                          ],
-                        ),
+                        child: Text("Needs Attention"),
+                      ),
+                      const PopupMenuItem(
+                        value: ChatFilter.botActive,
+                        child: Text("Bot Active"),
+                      ),
+                      const PopupMenuItem(
+                        value: ChatFilter.botInactive,
+                        child: Text("Bot Inactive"),
                       ),
                     ],
-              );
-            },
+              ),
+            ),
           ),
         ],
       ),
@@ -312,121 +622,92 @@ class HomeScreen extends StatelessWidget {
   Widget _buildContactList(BuildContext context) {
     return Consumer<ChatProvider>(
       builder: (context, provider, child) {
-        final contacts = provider.contacts;
-        if (contacts.isEmpty) return _buildEmptyState();
-        return CustomScrollView(
-          physics: const BouncingScrollPhysics(
-            parent: AlwaysScrollableScrollPhysics(),
-          ),
-          slivers: [
-            CupertinoSliverRefreshControl(
-              onRefresh: () => provider.refreshContacts(),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              sliver: SliverList(
-                delegate: SliverChildBuilderDelegate((context, index) {
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: ContactCard(
-                      contact: contacts[index],
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                ChatScreen(contact: contacts[index]),
-                          ),
-                        );
-                      },
-                    ),
-                  );
-                }, childCount: contacts.length),
+        // 1. Filter by Search Query
+        var contacts = provider.contacts.where((c) {
+          final q = _searchQuery.trim();
+          if (q.isEmpty) return true;
+          return c.name.toLowerCase().contains(q) || c.phone.contains(q);
+        }).toList();
+
+        // 2. Filter by SIDEBAR Tag (New Logic)
+        if (_selectedMenuItem != "Inicio" &&
+            _selectedMenuItem != "Log out" &&
+            _selectedMenuItem != "Profile" &&
+            _selectedMenuItem != "Edit") {
+          // We treat sidebar labels as required tags.
+          // e.g. If selected "Work", contact must have "Work" (case insensitive possible)
+          contacts = contacts.where((c) {
+            return c.tags.any(
+              (t) => t.toLowerCase() == _selectedMenuItem.toLowerCase(),
+            );
+          }).toList();
+        }
+
+        // 3. Sort Logic
+        contacts.sort((a, b) {
+          final dateA = a.lastActivity ?? DateTime(2000);
+          final dateB = b.lastActivity ?? DateTime(2000);
+          if (_sortBy == 'newest') {
+            return dateB.compareTo(dateA); // Descending
+          } else {
+            return dateA.compareTo(dateB); // Ascending
+          }
+        });
+
+        if (contacts.isEmpty) {
+          return SliverFillRemaining(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.search_off_rounded,
+                    size: 48,
+                    color: Colors.grey[300],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    "No contacts found",
+                    style: TextStyle(color: Colors.grey[500]),
+                  ),
+                ],
               ),
             ),
-          ],
+          );
+        }
+        return SliverPadding(
+          padding: const EdgeInsets.only(bottom: 24),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate((context, index) {
+              return ContactCard(
+                contact: contacts[index],
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          ChatScreen(contact: contacts[index]),
+                    ),
+                  ).then((_) {
+                    Provider.of<ChatProvider>(
+                      context,
+                      listen: false,
+                    ).fetchDashboardStats(forceRefresh: true);
+                  });
+                },
+              );
+            }, childCount: contacts.length),
+          ),
         );
       },
     );
   }
+}
 
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.chat_bubble_outline_rounded,
-            size: 60,
-            color: Colors.grey.withValues(alpha: 0.3),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            "Sin contactos activos",
-            style: TextStyle(color: Colors.grey[500]),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDashboardCard(
-    BuildContext context, {
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required Color color,
-    bool isDesktop = false,
-  }) {
-    return Container(
-      width: isDesktop ? double.infinity : 150,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.3),
-            blurRadius: 12,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: Colors.white, size: 24),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                subtitle,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: isDesktop ? 22 : 22,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                title,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.9),
-                  fontSize: 14,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+class _Metric {
+  final String title;
+  final String value;
+  final IconData icon;
+  final Color color;
+  _Metric(this.title, this.value, this.icon, this.color);
 }

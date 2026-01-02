@@ -231,38 +231,66 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // Update ListView Builder to wrap ChatMessage in Dismissible for Swipe Reply
   Widget _buildMessageList(Contact currentContact) {
-    return ListView.builder(
-      controller: _scrollController,
-      reverse: true,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      itemCount: currentContact.messages.length,
-      itemBuilder: (BuildContext context, int index) {
-        final msg =
-            currentContact.messages[currentContact.messages.length - 1 - index];
-        final key = msg.id != null
-            ? _messageKeys.putIfAbsent(msg.id!, () => GlobalKey())
-            : null;
-
-        return Dismissible(
-          key: Key("msg_${msg.id}_${index}"), // Unique key
-          direction: DismissDirection.startToEnd,
-          confirmDismiss: (direction) async {
-            _onSwipeToReply(msg);
-            return false; // Don't actually dismiss
-          },
-          background: Container(
-            alignment: Alignment.centerLeft,
-            padding: const EdgeInsets.only(left: 20),
-            color: Colors.transparent, // Or a subtle hint color
-            child: Icon(Icons.reply, color: Theme.of(context).primaryColor),
-          ),
-          child: ChatMessage(
-            key: key,
-            message: msg,
-            onReplyTap: _scrollToMessage,
-          ),
-        );
+    return NotificationListener<ScrollNotification>(
+      onNotification: (scrollInfo) {
+        // With reverse: true, maxScrollExtent corresponds to the "top" of the visual list (oldest messages)
+        // Check if we are close to the edge (e.g. 200 pixels away)
+        if (scrollInfo.metrics.pixels >=
+            scrollInfo.metrics.maxScrollExtent - 200) {
+          // Debounce slightly or just call provider (provider should handle concurrency or just let it replace)
+          // For simplicity in this iteration, we call it. A boolean _isLoadingMore could be added to state to prevent spam.
+          // However, Provider call is async.
+          // We'll trust the provider/API speed or add a simple check.
+          // Actually, let's keep it simple.
+          Provider.of<ChatProvider>(
+            context,
+            listen: false,
+          ).loadMoreMessages(currentContact.phone);
+        }
+        return false;
       },
+      child: ListView.builder(
+        controller: _scrollController,
+        reverse: true,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        itemCount:
+            currentContact.messages.length +
+            1, // +1 for loading indicator at top
+        itemBuilder: (BuildContext context, int index) {
+          // Extra item at the end (top visually) for spacing/spinner
+          if (index == currentContact.messages.length) {
+            return const SizedBox(
+              height: 20,
+            ); // Placeholder for potential spinner
+          }
+
+          final msg = currentContact
+              .messages[currentContact.messages.length - 1 - index];
+          final key = msg.id != null
+              ? _messageKeys.putIfAbsent(msg.id!, () => GlobalKey())
+              : null;
+
+          return Dismissible(
+            key: Key("msg_${msg.id}_${index}"), // Unique key
+            direction: DismissDirection.startToEnd,
+            confirmDismiss: (direction) async {
+              _onSwipeToReply(msg);
+              return false; // Don't actually dismiss
+            },
+            background: Container(
+              alignment: Alignment.centerLeft,
+              padding: const EdgeInsets.only(left: 20),
+              color: Colors.transparent, // Or a subtle hint color
+              child: Icon(Icons.reply, color: Theme.of(context).primaryColor),
+            ),
+            child: ChatMessage(
+              key: key,
+              message: msg,
+              onReplyTap: _scrollToMessage,
+            ),
+          );
+        },
+      ),
     );
   }
 
