@@ -28,11 +28,15 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+
+  // Upload progress tracking
+  int _uploadingCount = 0;
+  int _uploadedCount = 0;
+  int _totalToUpload = 0;
   final FocusNode _focusNode = FocusNode();
 
   OverlayEntry? _overlayEntry;
   final LayerLink _layerLink = LayerLink();
-  String _lastQuery = "";
   final Map<int, GlobalKey> _messageKeys = {};
   bool _isBotToggling = false;
 
@@ -337,7 +341,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _onTextChanged() {
     final text = _textController.text;
-    if (text.startsWith("/") && text.length > 1) {
+    // Mostrar overlay inmediatamente al escribir "/"
+    if (text.startsWith("/")) {
       _showSnippetOverlay(text);
     } else {
       _removeSnippetOverlay();
@@ -345,71 +350,110 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _showSnippetOverlay(String query) {
-    // Si el query no cambió, evitando reconstrucciones innecesarias (ej. movimiento de cursor)
-    if (_lastQuery == query && _overlayEntry != null) return;
-    _lastQuery = query;
-
-    final chatProvider = Provider.of<ChatProvider>(context, listen: false);
-    final matches = chatProvider.snippets
-        .where((s) => s.shortcut.startsWith(query))
-        .toList();
-
-    if (matches.isEmpty) {
-      _removeSnippetOverlay();
-      return;
-    }
-
+    // Remover overlay existente SIEMPRE para reconstruir con datos filtrados
     if (_overlayEntry != null) {
       _overlayEntry!.remove();
+      _overlayEntry = null;
+    }
+
+    final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+
+    // Quitar el "/" del query para comparar
+    // Si query es "/hola", queryText será "hola"
+    // Si query es "/", queryText será ""
+    final queryText = query.substring(1).toLowerCase();
+
+    // Si solo escribió "/", mostrar TODOS los snippets
+    // Si escribió más (ej. "/e"), filtrar por los que empiezan con "e"
+    final matches = queryText.isEmpty
+        ? chatProvider
+              .snippets // Mostrar todos si solo es "/"
+        : chatProvider.snippets.where((s) {
+            // Normalizar el shortcut del snippet (quitar "/" si lo tiene)
+            final shortcut = s.shortcut.startsWith('/')
+                ? s.shortcut.substring(1).toLowerCase()
+                : s.shortcut.toLowerCase();
+            return shortcut.startsWith(queryText);
+          }).toList();
+
+    if (matches.isEmpty) {
+      return; // Ya removimos el overlay arriba
     }
 
     _overlayEntry = OverlayEntry(
       builder: (context) => Positioned(
-        width: 300, // Fixed width or dynamic
+        width: MediaQuery.of(context).size.width - 32, // Ancho con padding
         child: CompositedTransformFollower(
           link: _layerLink,
           showWhenUnlinked: false,
-          offset: const Offset(
-            0,
-            -150,
-          ), // Move up. Should calculate based on list height ideally.
-          // Better approach: Use Alignment.bottomLeft relative to input, but input grows.
-          // Let's rely on offset for now or Alignment.
-          // Alignment.bottomLeft of Follower aligns with Target's anchor.
-          // We want the overlay ABOVE the input.
-          // targetAnchor: Alignment.topLeft,
-          // followerAnchor: Alignment.bottomLeft,
+          // El overlay debe aparecer ARRIBA del TextField
+          // targetAnchor: bottom left del TextField
+          // followerAnchor: bottom left del overlay (para que se alinee arriba)
           targetAnchor: Alignment.topLeft,
           followerAnchor: Alignment.bottomLeft,
+          offset: const Offset(0, -8), // Pequeño gap entre overlay y input
 
           child: Material(
             elevation: 8,
             borderRadius: BorderRadius.circular(12),
             color: Theme.of(context).cardColor,
-            child: Container(
-              constraints: const BoxConstraints(maxHeight: 200),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight:
+                    MediaQuery.of(context).size.height *
+                    0.4, // Máximo 40% de la pantalla
+                minHeight: 50,
+              ),
               child: ListView.builder(
                 padding: EdgeInsets.zero,
                 shrinkWrap: true,
                 itemCount: matches.length,
                 itemBuilder: (context, index) {
                   final snippet = matches[index];
-                  return ListTile(
-                    leading: const Icon(
-                      Icons.flash_on,
-                      size: 16,
-                      color: Colors.orange,
-                    ),
-                    title: Text(
-                      snippet.shortcut,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    subtitle: Text(
-                      snippet.content,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                  return InkWell(
                     onTap: () => _insertSnippet(snippet),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.flash_on,
+                            size: 18,
+                            color: Colors.orange[600],
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  snippet.shortcut.startsWith('/')
+                                      ? snippet.shortcut
+                                      : '/${snippet.shortcut}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  snippet.content,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   );
                 },
               ),
@@ -511,11 +555,18 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       }
 
-      // Subir archivos seleccionados
-      for (var file in filesToUpload) {
-        // Determinar tipo string para backend basado en extensión si es 'any' o el tipo pasado
-        String uploadType = _mapFileTypeToString(type, file.path);
-        _uploadFile(file, uploadType);
+      // Upload files with batch progress
+      if (filesToUpload.isNotEmpty) {
+        setState(() {
+          _totalToUpload = filesToUpload.length;
+          _uploadedCount = 0;
+          _uploadingCount = 0;
+        });
+
+        for (var file in filesToUpload) {
+          String uploadType = _mapFileTypeToString(type, file.path);
+          _uploadFile(file, uploadType);
+        }
       }
     } catch (e) {
       debugPrint("Error seleccionando archivos: $e");
@@ -544,12 +595,20 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _uploadFile(File file, String type) async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text("Subiendo archivo..."),
-        backgroundColor: Theme.of(context).primaryColor,
-      ),
-    );
+    setState(() {
+      _uploadingCount++;
+    });
+
+    // Show batch progress only once
+    if (_uploadingCount == 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Subiendo $_totalToUpload archivo(s)..."),
+          backgroundColor: Theme.of(context).primaryColor,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
 
     try {
       var request = http.MultipartRequest(
@@ -571,25 +630,47 @@ class _ChatScreenState extends State<ChatScreen> {
       );
 
       var response = await request.send();
+
+      setState(() {
+        _uploadedCount++;
+      });
+
       if (response.statusCode == 200) {
         if (mounted) {
           Provider.of<ChatProvider>(context, listen: false).refreshContacts();
+
+          // Show success when all done
+          if (_uploadedCount == _totalToUpload) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text("✅ $_uploadedCount archivo(s) enviado(s)"),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
         }
       } else {
-        if (mounted) {
+        if (mounted && _uploadedCount == _totalToUpload) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("Error al enviar"),
-              backgroundColor: Colors.red,
+            SnackBar(
+              content: Text(
+                "⚠️ $_uploadedCount/$_totalToUpload enviados (algunos fallaron)",
+              ),
+              backgroundColor: Colors.orange,
             ),
           );
         }
       }
     } catch (e) {
-      if (mounted) {
+      debugPrint("Upload error: $e");
+      setState(() {
+        _uploadedCount++;
+      });
+
+      if (mounted && _uploadedCount == _totalToUpload) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Error de conexión"),
+          SnackBar(
+            content: Text("❌ Error: $_uploadedCount/$_totalToUpload enviados"),
             backgroundColor: Colors.red,
           ),
         );

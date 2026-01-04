@@ -264,8 +264,8 @@ class ChatMessage extends StatelessWidget {
                         message.caption!.isNotEmpty) {
                       try {
                         final data = jsonDecode(message.caption!);
-                        imageUrl = data['image_url'];
-                        price = data['price'];
+                        imageUrl = data['image_url']?.toString();
+                        price = data['price']?.toString();
                       } catch (e) {
                         // Caption no es JSON
                       }
@@ -426,10 +426,14 @@ class ChatMessage extends StatelessWidget {
                             ...sections.expand<Widget>((section) {
                               final rows = section['product_items'] as List;
                               return rows.map<Widget>((item) {
-                                String id = item['product_retailer_id'] ?? '';
-                                String name = item['name'] ?? id;
-                                String? imageUrl = item['image_url'];
-                                String? price = item['price'];
+                                String id =
+                                    item['product_retailer_id']?.toString() ??
+                                    '';
+                                String name = item['name']?.toString() ?? id;
+                                String? imageUrl = item['image_url']
+                                    ?.toString();
+                                // El precio puede venir como double, int o String desde el backend
+                                String? price = item['price']?.toString();
 
                                 return Padding(
                                   padding: const EdgeInsets.symmetric(

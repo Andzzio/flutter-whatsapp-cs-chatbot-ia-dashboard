@@ -31,8 +31,12 @@ class _ProductSelectorState extends State<ProductSelector> {
     final token = Provider.of<ChatProvider>(context, listen: false).apiToken;
     final orderProvider = Provider.of<OrderProvider>(context, listen: false);
 
-    // Usamos el cache del provider para evitar llamadas repetitivas
-    final products = await orderProvider.fetchProducts(_apiService, token);
+    // Usamos forceRefresh para asegurar stock actualizado al momento de la venta
+    final products = await orderProvider.fetchProducts(
+      _apiService,
+      token,
+      forceRefresh: true,
+    );
 
     if (mounted) {
       setState(() {
@@ -163,16 +167,182 @@ class _ProductSelectorState extends State<ProductSelector> {
                               Icons.add_circle,
                               color: Colors.blue,
                             ),
-                            onPressed: () {
-                              Navigator.pop(context, product);
+                            onPressed: () async {
+                              final result = await _showSizeSelector(
+                                context,
+                                product,
+                              );
+                              if (result != null) {
+                                Navigator.pop(context, result);
+                              }
                             },
                           ),
-                          onTap: () {
-                            Navigator.pop(context, product);
+                          onTap: () async {
+                            final result = await _showSizeSelector(
+                              context,
+                              product,
+                            );
+                            if (result != null) {
+                              Navigator.pop(context, result);
+                            }
                           },
                         );
                       },
                     ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<Map<String, dynamic>?> _showSizeSelector(
+    BuildContext context,
+    Map<String, dynamic> product,
+  ) async {
+    String? selectedSize;
+
+    return showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: Text(
+            product['name'] ?? 'Producto',
+            style: const TextStyle(fontSize: 16),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'S/ ${(product['price'] as num).toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.green,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Selecciona una talla:',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _buildSizeButton('S', product, selectedSize, setState, (
+                    size,
+                  ) {
+                    selectedSize = size;
+                  }),
+                  _buildSizeButton('M', product, selectedSize, setState, (
+                    size,
+                  ) {
+                    selectedSize = size;
+                  }),
+                  _buildSizeButton('L', product, selectedSize, setState, (
+                    size,
+                  ) {
+                    selectedSize = size;
+                  }),
+                  _buildSizeButton('XL', product, selectedSize, setState, (
+                    size,
+                  ) {
+                    selectedSize = size;
+                  }),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: selectedSize == null
+                  ? null
+                  : () {
+                      Navigator.pop(context, {
+                        ...product,
+                        'selected_size': selectedSize,
+                      });
+                    },
+              child: const Text('Agregar'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSizeButton(
+    String size,
+    Map<String, dynamic> product,
+    String? selectedSize,
+    StateSetter setState,
+    Function(String) onTap,
+  ) {
+    final stockField = 'stock_${size.toLowerCase()}';
+    final stock = product[stockField] ?? 0;
+    final hasStock = stock > 0;
+    final isSelected = selectedSize == size;
+
+    return GestureDetector(
+      onTap: hasStock
+          ? () {
+              setState(() {
+                onTap(size);
+              });
+            }
+          : null,
+      child: Container(
+        width: 70,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: !hasStock
+              ? Colors.grey.shade200
+              : isSelected
+              ? Colors.blue
+              : Colors.white,
+          border: Border.all(
+            color: !hasStock
+                ? Colors.grey.shade400
+                : isSelected
+                ? Colors.blue
+                : Colors.grey.shade300,
+            width: 2,
+          ),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              size,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: !hasStock
+                    ? Colors.grey
+                    : isSelected
+                    ? Colors.white
+                    : Colors.black,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '$stock',
+              style: TextStyle(
+                fontSize: 12,
+                color: !hasStock
+                    ? Colors.grey
+                    : isSelected
+                    ? Colors.white70
+                    : Colors.grey.shade600,
+              ),
             ),
           ],
         ),

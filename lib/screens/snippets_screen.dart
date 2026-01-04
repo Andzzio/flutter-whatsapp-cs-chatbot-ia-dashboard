@@ -115,6 +115,54 @@ class _SnippetsScreenState extends State<SnippetsScreen> {
     );
   }
 
+  void _showEditDialog(Snippet snippet) {
+    _shortcutController.text = snippet.shortcut;
+    _contentController.text = snippet.content;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Editar Snippet"),
+        content: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: _shortcutController,
+                decoration: const InputDecoration(
+                  labelText: "Atajo (ej: /hola)",
+                  border: OutlineInputBorder(),
+                ),
+                validator: (v) => v!.isEmpty ? "Requerido" : null,
+                enabled: false, // Cannot change shortcut when editing
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _contentController,
+                decoration: const InputDecoration(
+                  labelText: "Mensaje",
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 3,
+                validator: (v) => v!.isEmpty ? "Requerido" : null,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancelar"),
+          ),
+          ElevatedButton(
+            onPressed: _createSnippet, // Uses same endpoint (upsert)
+            child: const Text("Guardar"),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -144,8 +192,33 @@ class _SnippetsScreenState extends State<SnippetsScreen> {
                     ),
                     trailing: IconButton(
                       icon: const Icon(Icons.delete, color: Colors.red),
-                      onPressed: () => _deleteSnippet(s.id),
+                      onPressed: () {
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text("Eliminar Snippet"),
+                            content: Text("¿Eliminar '${s.shortcut}'?"),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text("Cancelar"),
+                              ),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red,
+                                ),
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  _deleteSnippet(s.id);
+                                },
+                                child: const Text("Eliminar"),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
+                    onTap: () => _showEditDialog(s),
                   ),
                 );
               },

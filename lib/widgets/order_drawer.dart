@@ -22,77 +22,102 @@ class OrderDrawer extends StatelessWidget {
   }
 
   Future<void> _submitOrder(BuildContext context) async {
-    final orderProvider = Provider.of<OrderProvider>(context, listen: false);
-    final chatProvider = Provider.of<ChatProvider>(context, listen: false);
-    final apiService = Provider.of<ApiService>(
-      context,
-      listen: false,
-    ); // Fix ApiService provider usage
+    try {
+      final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+      final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+      final apiService = ApiService(); // FIX: Direct instantiation like mobile
 
-    // Show loading
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
+      // Guardar referencia antes del await
+      final scaffoldMessenger = ScaffoldMessenger.of(context);
+      final navigator = Navigator.of(context);
 
-    final result = await orderProvider.submitOrder(
-      apiService,
-      chatProvider.apiToken,
-      contactPhone,
-    );
+      // Show loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      );
 
-    if (context.mounted) {
-      Navigator.pop(context); // Close loading
+      final result = await orderProvider.submitOrder(
+        apiService,
+        chatProvider.apiToken,
+        contactPhone,
+      );
 
-      if (result.error != null) {
+      if (context.mounted) {
+        navigator.pop(); // Close loading
+
+        if (result.error != null) {
+          scaffoldMessenger.showSnackBar(
+            SnackBar(
+              content: Text("Error: ${result.error}"),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+
+        final data = result.data;
+        if (data != null) {
+          // 1. Construir texto SHURUMBA Style 👗✨
+          final items = (data['items'] as List).cast<Map<String, dynamic>>();
+          final total = data['total'];
+          final shipping = data['shipping'];
+          final discount = data['discount'];
+
+          StringBuffer buffer = StringBuffer();
+          buffer.writeln("✨ *Resumen de tu Pedido - SHURUMBA* ✨");
+          buffer.writeln("");
+          buffer.writeln("👗 *Tus prendas:*");
+          for (var item in items) {
+            buffer.writeln("- ${item['quantity']}x ${item['name']}");
+          }
+          buffer.writeln("");
+
+          if (shipping > 0) {
+            buffer.writeln("🚚 *Envío:* S/${shipping.toStringAsFixed(2)}");
+          }
+          if (discount > 0) {
+            buffer.writeln(
+              "🏷️ *Descuento:* -S/${discount.toStringAsFixed(2)}",
+            );
+          }
+
+          buffer.writeln("-------------------------");
+          buffer.writeln("💰 *TOTAL A PAGAR: S/${total.toStringAsFixed(2)}*");
+          buffer.writeln("");
+          buffer.writeln("¡Gracias por elegirnos! 💖");
+
+          // 2. Enviar mensaje como el bot
+          chatProvider.sendMessage(contactPhone, buffer.toString());
+
+          // 3. Feedback y CERRAR DRAWER (FIX #3)
+          scaffoldMessenger.showSnackBar(
+            const SnackBar(
+              content: Text("¡Pedido enviado correctamente!"),
+              backgroundColor: Colors.green,
+            ),
+          );
+          navigator.pop(); // FIX: Close drawer after submit
+          chatProvider.refreshContacts();
+        }
+      }
+    } catch (e, stackTrace) {
+      debugPrint("Error en _submitOrder: $e");
+      debugPrint("StackTrace: $stackTrace");
+
+      if (context.mounted) {
+        try {
+          Navigator.of(context).pop(); // Close loading if open
+        } catch (_) {}
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("Error: ${result.error}"),
+            content: Text("Error inesperado: $e"),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
           ),
         );
-        return;
-      }
-
-      final data = result.data;
-      if (data != null) {
-        // 1. Construir texto SHURUMBA Style 👗✨
-        final items = (data['items'] as List).cast<Map<String, dynamic>>();
-        final total = data['total'];
-        final shipping = data['shipping'];
-        final discount = data['discount'];
-
-        StringBuffer buffer = StringBuffer();
-        buffer.writeln("✨ *Resumen de tu Pedido - SHURUMBA* ✨");
-        buffer.writeln("");
-        buffer.writeln("👗 *Tus prendas:*");
-        for (var item in items) {
-          buffer.writeln("- ${item['quantity']}x ${item['name']}");
-        }
-        buffer.writeln("");
-
-        if (shipping > 0) {
-          buffer.writeln("🚚 *Envío:* S/${shipping.toStringAsFixed(2)}");
-        }
-        if (discount > 0) {
-          buffer.writeln("🏷️ *Descuento:* -S/${discount.toStringAsFixed(2)}");
-        }
-
-        buffer.writeln("-------------------------");
-        buffer.writeln("💰 *TOTAL A PAGAR: S/${total.toStringAsFixed(2)}*");
-        buffer.writeln("");
-        buffer.writeln("¡Gracias por elegirnos! 💖");
-
-        // 2. Enviar mensaje como el bot
-        chatProvider.sendMessage(contactPhone, buffer.toString());
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("✅ Pedido creado y enviado")),
-        );
-
-        // Refresh chat
-        chatProvider.refreshContacts();
       }
     }
   }
@@ -243,16 +268,49 @@ class OrderDrawer extends StatelessWidget {
               ),
               child: Column(
                 children: [
+                  // FIX: Add Shipping Cost Input (like mobile)
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text("Total:", style: TextStyle(fontSize: 18)),
+                      const Text(
+                        "Envío:",
+                        style: TextStyle(fontSize: 16, color: Colors.grey),
+                      ),
+                      SizedBox(
+                        width: 100,
+                        child: TextFormField(
+                          initialValue: orderProvider.shippingCost
+                              .toStringAsFixed(2),
+                          keyboardType: TextInputType.number,
+                          textAlign: TextAlign.end,
+                          decoration: const InputDecoration(
+                            prefixText: "S/ ",
+                            isDense: true,
+                            border: UnderlineInputBorder(),
+                          ),
+                          onChanged: (value) {
+                            final val = double.tryParse(value);
+                            if (val != null) {
+                              orderProvider.setShippingCost(val);
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "Total a Pagar:",
+                        style: TextStyle(fontSize: 18, color: Colors.grey),
+                      ),
                       Text(
                         "S/ ${orderProvider.total.toStringAsFixed(2)}",
                         style: const TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
-                          color: Colors.green,
                         ),
                       ),
                     ],
@@ -260,17 +318,9 @@ class OrderDrawer extends StatelessWidget {
                   const SizedBox(height: 16),
                   SizedBox(
                     width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blueAccent,
-                        foregroundColor: Colors.white,
-                      ),
+                    child: FilledButton(
                       onPressed: () => _submitOrder(context),
-                      child: const Text(
-                        "RECEPCIONAR PEDIDO",
-                        style: TextStyle(fontSize: 16),
-                      ),
+                      child: const Text("Enviar Pedido"),
                     ),
                   ),
                 ],

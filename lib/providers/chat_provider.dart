@@ -5,6 +5,7 @@ import 'package:boty_flutter/models/snippet.dart';
 import 'package:boty_flutter/services/api_service.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
 // Message import removed (duplicate)
 import 'package:boty_flutter/services/notification_service.dart';
 import 'dart:convert';
@@ -602,6 +603,10 @@ class ChatProvider extends ChangeNotifier {
       ];
       _saveSnippets();
     }
+    // Always try to sync from backend after loading local
+    if (_apiToken.isNotEmpty) {
+      fetchSnippetsFromBackend();
+    }
   }
 
   Future<void> _saveSnippets() async {
@@ -630,6 +635,29 @@ class ChatProvider extends ChangeNotifier {
       _snippets[index] = newSnippet;
       await _saveSnippets();
       notifyListeners();
+    }
+  }
+
+  // Sync snippets from backend
+  Future<void> fetchSnippetsFromBackend({bool forceRefresh = false}) async {
+    try {
+      final response = await http.get(
+        Uri.parse('${ApiService.baseUrl}/api/snippets/'),
+        headers: {'Authorization': _apiToken},
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final snippetsList = data['snippets'] as List;
+        _snippets = snippetsList.map((item) => Snippet.fromJson(item)).toList();
+        await _saveSnippets();
+        notifyListeners();
+        debugPrint('✅ Snippets synced from backend: ${_snippets.length}');
+      } else {
+        debugPrint('⚠️ Failed to fetch snippets: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('Error fetching snippets from backend: $e');
     }
   }
 

@@ -157,7 +157,7 @@ class ApiService {
   }) async {
     try {
       final body = {
-        "items": items.map((i) => i.toJson()).toList(),
+        "items": items.map((i) => i.toMap()).toList(),
         "shipping_cost": shippingCost,
       };
 
@@ -282,6 +282,186 @@ class ApiService {
     } catch (e) {
       debugPrint("Error fetching chat history: $e");
       return [];
+    }
+  }
+
+  // --- ANALYTICS V3 ---
+  Future<Map<String, dynamic>> getAnalyticsStats(
+    String token,
+    String period,
+  ) async {
+    try {
+      final uri = Uri.parse(
+        "$baseUrl/api/analytics/stats/",
+      ).replace(queryParameters: {'period': period});
+
+      final response = await http.get(uri, headers: {"Authorization": token});
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      return {};
+    } catch (e) {
+      debugPrint("Error fetching analytics stats: $e");
+      return {};
+    }
+  }
+
+  Future<Map<String, dynamic>> getAnalyticsTrends(
+    String token,
+    String period,
+    String metric,
+  ) async {
+    try {
+      final uri = Uri.parse(
+        "$baseUrl/api/analytics/trends/",
+      ).replace(queryParameters: {'period': period, 'metric': metric});
+
+      final response = await http.get(uri, headers: {"Authorization": token});
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      return {};
+    } catch (e) {
+      debugPrint("Error fetching analytics trends: $e");
+      return {};
+    }
+  }
+
+  // --- STOCK MANAGEMENT ---
+  Future<bool> updateProductStock(
+    String token,
+    String retailerId,
+    Map<String, int> stocks, {
+    bool? isAvailable,
+  }) async {
+    try {
+      final body = {
+        "retailer_id": retailerId,
+        "stock_s": stocks['S'] ?? 0,
+        "stock_m": stocks['M'] ?? 0,
+        "stock_l": stocks['L'] ?? 0,
+        "stock_xl": stocks['XL'] ?? 0,
+        if (isAvailable != null) "is_available": isAvailable,
+      };
+
+      final response = await http.post(
+        Uri.parse("$baseUrl/api/products/stock/"),
+        headers: {"Authorization": token, "Content-Type": "application/json"},
+        body: json.encode(body),
+      );
+
+      if (response.statusCode == 200) {
+        debugPrint("Stock updated successfully for $retailerId");
+        return true;
+      } else {
+        debugPrint(
+          "Error updating stock: ${response.statusCode} - ${response.body}",
+        );
+        return false;
+      }
+    } catch (e) {
+      debugPrint("Error updating stock: $e");
+      return false;
+    }
+  }
+
+  Future<({bool success, String? error})> revertOrderStock(
+    String token,
+    int orderId,
+  ) async {
+    try {
+      final response = await http.put(
+        Uri.parse("$baseUrl/api/orders/$orderId/revert-stock/"),
+        headers: {"Authorization": token},
+      );
+
+      if (response.statusCode == 200) {
+        return (success: true, error: null);
+      } else {
+        try {
+          final body = json.decode(response.body);
+          return (
+            success: false,
+            error: body['error']?.toString() ?? "Error desconocido",
+          );
+        } catch (_) {
+          return (success: false, error: "Error ${response.statusCode}");
+        }
+      }
+    } catch (e) {
+      return (success: false, error: "Error de conexión: $e");
+    }
+  }
+
+  // --- ORDERS STOCK DEDUCTION ---
+  Future<Map<String, dynamic>> deductOrderStock(
+    String token,
+    int orderId,
+  ) async {
+    try {
+      final response = await http.post(
+        Uri.parse("$baseUrl/api/orders/$orderId/deduct-stock/"),
+        headers: {"Authorization": token, "Content-Type": "application/json"},
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        final error = json.decode(response.body);
+        return {"error": error["error"] ?? "Error desconocido"};
+      }
+    } catch (e) {
+      debugPrint("Error deducting stock: $e");
+      return {"error": e.toString()};
+    }
+  }
+
+  // --- EXCEL IMPORT/EXPORT ---
+  Future<List<int>?> downloadProductsExcel(String token) async {
+    try {
+      final response = await http.get(
+        Uri.parse("$baseUrl/api/products/export/excel/"),
+        headers: {"Authorization": token},
+      );
+
+      if (response.statusCode == 200) {
+        return response.bodyBytes;
+      } else {
+        debugPrint("Error downloading Excel: ${response.statusCode}");
+        return null;
+      }
+    } catch (e) {
+      debugPrint("Error downloading Excel: $e");
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>> uploadProductsExcel(
+    String token,
+    String filePath,
+  ) async {
+    try {
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse("$baseUrl/api/products/import/excel/"),
+      );
+      request.headers["Authorization"] = token;
+      request.files.add(await http.MultipartFile.fromPath('file', filePath));
+
+      final response = await request.send();
+      final responseData = await response.stream.bytesToString();
+
+      if (response.statusCode == 200) {
+        return json.decode(responseData);
+      } else {
+        final error = json.decode(responseData);
+        return {"error": error["error"] ?? "Error ${response.statusCode}"};
+      }
+    } catch (e) {
+      debugPrint("Error uploading Excel: $e");
+      return {"error": e.toString()};
     }
   }
 }

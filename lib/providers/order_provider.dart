@@ -49,6 +49,7 @@ class OrderProvider extends ChangeNotifier {
     final retailerId = productMap['retailer_id'] ?? "";
     final name = productMap['name'] ?? "Unknown";
     final imageUrl = productMap['image_url'] ?? "";
+    final size = productMap['selected_size']; // ✅ Capturar talla
 
     // Parse price safely
     double price = 0.0;
@@ -65,17 +66,23 @@ class OrderProvider extends ChangeNotifier {
       debugPrint("Error parsing price: $e");
     }
 
-    // Check if exists logic
-    final index = _cartItems.indexWhere((i) => i.retailerId == retailerId);
+    // Buscar si ya existe el mismo producto CON LA MISMA TALLA
+    final index = _cartItems.indexWhere(
+      (i) => i.retailerId == retailerId && i.size == size,
+    );
+
     if (index != -1) {
+      // Ya existe con esa talla, incrementar cantidad
       _cartItems[index].quantity++;
     } else {
+      // Agregar nuevo item con talla
       _cartItems.add(
         CartItem(
           retailerId: retailerId,
           name: name,
           price: price,
           imageUrl: imageUrl,
+          size: size, // ✅ Guardar talla
         ),
       );
     }

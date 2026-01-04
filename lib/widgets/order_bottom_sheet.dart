@@ -70,7 +70,11 @@ class OrderBottomSheet extends StatelessWidget {
           buffer.writeln("");
           buffer.writeln("👗 *Tus prendas:*");
           for (var item in items) {
-            buffer.writeln("- ${item['quantity']}x ${item['name']}");
+            String itemText = "- ${item['quantity']}x ${item['name']}";
+            if (item['size'] != null && item['size'].toString().isNotEmpty) {
+              itemText += " (Talla: ${item['size']})";
+            }
+            buffer.writeln(itemText);
           }
           buffer.writeln("");
 
@@ -89,12 +93,15 @@ class OrderBottomSheet extends StatelessWidget {
           buffer.writeln("¡Gracias por elegirnos! 💖");
 
           // 2. Enviar mensaje como el bot
-          chatProvider.sendMessage(contactPhone, buffer.toString());
+          await chatProvider.sendMessage(contactPhone, buffer.toString());
 
-          // 3. Feedback y cerrar
+          // 3. Desactivar el bot automÃ¡ticamente (Handover)
+          await chatProvider.toggleBot(contactPhone, false);
+
+          // 4. Feedback y cerrar
           scaffoldMessenger.showSnackBar(
             const SnackBar(
-              content: Text("¡Pedido enviado correctamente!"),
+              content: Text("¡Pedido enviado y Bot desactivado!"),
               backgroundColor: Colors.green,
             ),
           );
@@ -122,6 +129,43 @@ class OrderBottomSheet extends StatelessWidget {
         );
       }
     }
+  }
+
+  Widget _buildSizeBadge(String size) {
+    Color color;
+    switch (size.toUpperCase()) {
+      case 'S':
+        color = Colors.blue;
+        break;
+      case 'M':
+        color = Colors.green;
+        break;
+      case 'L':
+        color = Colors.orange;
+        break;
+      case 'XL':
+        color = Colors.purple;
+        break;
+      default:
+        color = Colors.grey;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        border: Border.all(color: color.withOpacity(0.5)),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        "Talla: $size",
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+          color: color,
+        ),
+      ),
+    );
   }
 
   @override
@@ -256,6 +300,13 @@ class OrderBottomSheet extends StatelessWidget {
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),
+                                    if (item.size != null)
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 4.0,
+                                        ),
+                                        child: _buildSizeBadge(item.size!),
+                                      ),
                                     Text(
                                       "S/ ${item.price.toStringAsFixed(2)}",
                                       style: const TextStyle(

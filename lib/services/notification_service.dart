@@ -75,31 +75,37 @@ class NotificationService {
   ) async {
     const AndroidNotificationDetails androidPlatformChannelSpecifics =
         AndroidNotificationDetails(
-          'message_channel',
-          'Mensajes',
-          channelDescription: 'Notificaciones de nuevos mensajes de chat',
+          'high_priority_messages', // Nuevo canal de alta prioridad
+          'Mensajes Urgentes',
+          channelDescription: 'Notificaciones de alta prioridad para mensajes',
           importance: Importance.max,
-          priority: Priority.high,
+          priority: Priority.max, // Cambiado de high a max
+          playSound: true,
+          enableVibration: true,
+          enableLights: true,
           showWhen: true,
+          ticker: 'Nuevo mensaje', // Texto en barra de estado
           styleInformation: BigTextStyleInformation(''),
         );
 
     const LinuxNotificationDetails linuxPlatformChannelSpecifics =
-        LinuxNotificationDetails(urgency: LinuxNotificationUrgency.normal);
+        LinuxNotificationDetails(
+          urgency: LinuxNotificationUrgency
+              .critical, // Cambiado de normal a critical
+        );
 
     const NotificationDetails platformChannelSpecifics = NotificationDetails(
       android: androidPlatformChannelSpecifics,
       linux: linuxPlatformChannelSpecifics,
     );
 
-    // ID único basado en hash del teléfono para agrupar o reemplazar si se desea
-    // Usamos hashCode del mensaje o timestamp para que sean únicos y se acumulen
+    // ID único basado en timestamp para que se acumulen
     int id = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
     await _flutterLocalNotificationsPlugin.show(
       id,
       contact.name,
-      message.text, // Mostrar texto del mensaje o 'Foto', 'Audio' según tipo
+      message.text.isNotEmpty ? message.text : '📷 Imagen',
       platformChannelSpecifics,
       payload: contact.phone,
     );

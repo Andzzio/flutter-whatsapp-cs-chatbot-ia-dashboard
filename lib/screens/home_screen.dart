@@ -26,12 +26,15 @@ class _HomeScreenState extends State<HomeScreen> {
   String _searchQuery = "";
   String _sortBy = 'newest'; // 'newest' or 'oldest'
   String _selectedMenuItem = 'Inicio'; // For SideMenu selection
+  late ChatProvider _chatProvider;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<ChatProvider>(context, listen: false).fetchDashboardStats();
+      _chatProvider = Provider.of<ChatProvider>(context, listen: false);
+      _chatProvider.addListener(_onContactsChanged);
+      _chatProvider.fetchDashboardStats();
     });
     _searchController.addListener(() {
       setState(() {
@@ -40,8 +43,13 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  void _onContactsChanged() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    _chatProvider.removeListener(_onContactsChanged);
     _statsScrollController.dispose();
     _searchController.dispose();
     super.dispose();
