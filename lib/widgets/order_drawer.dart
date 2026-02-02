@@ -25,7 +25,7 @@ class OrderDrawer extends StatelessWidget {
     try {
       final orderProvider = Provider.of<OrderProvider>(context, listen: false);
       final chatProvider = Provider.of<ChatProvider>(context, listen: false);
-      final apiService = ApiService(); // FIX: Direct instantiation like mobile
+      final apiService = ApiService();
 
       // Guardar referencia antes del await
       final scaffoldMessenger = ScaffoldMessenger.of(context);
@@ -59,7 +59,7 @@ class OrderDrawer extends StatelessWidget {
 
         final data = result.data;
         if (data != null) {
-          // 1. Construir texto SHURUMBA Style 👗✨
+          // 1. Construir texto SHURUMBA Style 👗✨ (VERSION MOBILE SYNC)
           final items = (data['items'] as List).cast<Map<String, dynamic>>();
           final total = data['total'];
           final shipping = data['shipping'];
@@ -70,7 +70,24 @@ class OrderDrawer extends StatelessWidget {
           buffer.writeln("");
           buffer.writeln("👗 *Tus prendas:*");
           for (var item in items) {
-            buffer.writeln("- ${item['quantity']}x ${item['name']}");
+            String itemText = "- ${item['quantity']}x ${item['name']}";
+            if (item['size'] != null && item['size'].toString().isNotEmpty) {
+              itemText += " (Talla: ${item['size']})";
+            }
+            // Add unit price or total item price
+            if (item['price'] != null) {
+              final unitPrice =
+                  double.tryParse(item['price'].toString()) ?? 0.0;
+              final quantity = int.tryParse(item['quantity'].toString()) ?? 1;
+              final lineTotal = unitPrice * quantity;
+
+              itemText += " - S/${lineTotal.toStringAsFixed(2)}";
+
+              if (quantity > 1) {
+                itemText += " (S/${unitPrice.toStringAsFixed(2)} c/u)";
+              }
+            }
+            buffer.writeln(itemText);
           }
           buffer.writeln("");
 
@@ -89,16 +106,36 @@ class OrderDrawer extends StatelessWidget {
           buffer.writeln("¡Gracias por elegirnos! 💖");
 
           // 2. Enviar mensaje como el bot
-          chatProvider.sendMessage(contactPhone, buffer.toString());
+          await chatProvider.sendMessage(contactPhone, buffer.toString());
 
-          // 3. Feedback y CERRAR DRAWER (FIX #3)
+          // 3. Desactivar el bot automáticamente (Handover) - DESKTOP SYNC
+          await chatProvider.toggleBot(contactPhone, false);
+
+          // 4. Feedback y CERRAR DRAWER
           scaffoldMessenger.showSnackBar(
             const SnackBar(
-              content: Text("¡Pedido enviado correctamente!"),
+              content: Text("¡Pedido enviado correctamente! Bot desactivado."),
               backgroundColor: Colors.green,
             ),
           );
-          navigator.pop(); // FIX: Close drawer after submit
+          // Close drawer? Maybe keep it open or empty it? Mobile closes it.
+          // Desktop behavior usually keeps context, but let's clear cart at least.
+          // The order provider clears cart inside submitOrder typically or we allow clearing.
+          // User typically wants to close the 'New Order' mode if done.
+          // Navigator.pop(context) in desktop closes the specific drawer if it's pushed?
+          // No, in chat_screen it is a sibling widget conditioned by boolean.
+          // Navigator.pop() here would pop the SCREEN if not careful because drawer isn't pushed on stack.
+          // WAIT. In chat_screen.dart:
+          // if (isDesktop) { setState(() { _showDesktopDrawer = !_showDesktopDrawer; }); }
+          // The Drawer is IN THE TREE, not pushed.
+          // So Navigator.pop() will close the ChatScreen! BAD.
+
+          // FIX: We need a way to close the drawer or just clear state.
+          // Since it's a StatelessWidget, we can't setState `_showDesktopDrawer`.
+          // But we can just Clear Cart and maybe show success.
+          // Or we use a callback? OrderDrawer doesn't have a callback.
+          // Let's just Clear Cart (done by provider usually) and refresh contacts.
+
           chatProvider.refreshContacts();
         }
       }
@@ -108,7 +145,7 @@ class OrderDrawer extends StatelessWidget {
 
       if (context.mounted) {
         try {
-          Navigator.of(context).pop(); // Close loading if open
+          Navigator.of(context).pop(); // Close loading
         } catch (_) {}
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -120,6 +157,43 @@ class OrderDrawer extends StatelessWidget {
         );
       }
     }
+  }
+
+  Widget _buildSizeBadge(String size) {
+    Color color;
+    switch (size.toUpperCase()) {
+      case 'S':
+        color = Colors.blue;
+        break;
+      case 'M':
+        color = Colors.green;
+        break;
+      case 'L':
+        color = Colors.orange;
+        break;
+      case 'XL':
+        color = Colors.purple;
+        break;
+      default:
+        color = Colors.grey;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        border: Border.all(color: color.withOpacity(0.5)),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        "Talla: $size",
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+          color: color,
+        ),
+      ),
+    );
   }
 
   @override
@@ -176,7 +250,7 @@ class OrderDrawer extends StatelessWidget {
                         ElevatedButton.icon(
                           onPressed: () => _openProductSelector(context),
                           icon: const Icon(Icons.add),
-                          label: const Text("Agregar Producto"),
+                          label: const Text("Agregar Productos"),
                         ),
                       ],
                     ),
@@ -191,7 +265,7 @@ class OrderDrawer extends StatelessWidget {
                           child: OutlinedButton.icon(
                             onPressed: () => _openProductSelector(context),
                             icon: const Icon(Icons.add),
-                            label: const Text("Agregar otro producto"),
+                            label: const Text("Agregar más productos"),
                           ),
                         );
                       }
@@ -199,50 +273,106 @@ class OrderDrawer extends StatelessWidget {
                       final item = cartItems[index];
                       return Card(
                         margin: const EdgeInsets.only(bottom: 8),
-                        child: ListTile(
-                          leading: SizedBox(
-                            width: 40,
-                            height: 40,
-                            child: item.imageUrl.isNotEmpty
-                                ? Image.network(
-                                    item.imageUrl,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) =>
-                                        Icon(Icons.image),
-                                  )
-                                : const Icon(Icons.image),
-                          ),
-                          title: Text(
-                            item.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          subtitle: Text(
-                            "S/ ${item.price.toStringAsFixed(2)} x ${item.quantity}",
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
+                        child: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: Row(
                             children: [
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.remove_circle_outline,
-                                  size: 20,
+                              // Image
+                              Container(
+                                width: 50,
+                                height: 50,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  color: Colors.grey[200],
+                                  image: item.imageUrl.isNotEmpty
+                                      ? DecorationImage(
+                                          image: NetworkImage(item.imageUrl),
+                                          fit: BoxFit.cover,
+                                        )
+                                      : null,
                                 ),
-                                onPressed: () => orderProvider.updateQuantity(
-                                  item.retailerId,
-                                  -1,
+                                child: item.imageUrl.isEmpty
+                                    ? const Icon(
+                                        Icons.image,
+                                        color: Colors.grey,
+                                      )
+                                    : null,
+                              ),
+                              const SizedBox(width: 12),
+                              // Info
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    if (item.size != null)
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 4.0,
+                                        ),
+                                        child: _buildSizeBadge(item.size!),
+                                      ),
+                                    Text(
+                                      "S/ ${item.price.toStringAsFixed(2)}",
+                                      style: const TextStyle(
+                                        color: Colors.green,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              Text("${item.quantity}"),
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.add_circle_outline,
-                                  size: 20,
-                                ),
-                                onPressed: () => orderProvider.updateQuantity(
-                                  item.retailerId,
-                                  1,
-                                ),
+                              // Controls
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.remove_circle_outline,
+                                      size: 20,
+                                    ),
+                                    onPressed: () =>
+                                        orderProvider.updateQuantity(
+                                          item.retailerId,
+                                          -1,
+                                          size: item.size,
+                                        ),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8.0,
+                                    ),
+                                    child: Text(
+                                      "${item.quantity}",
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.add_circle_outline,
+                                      size: 20,
+                                    ),
+                                    onPressed: () =>
+                                        orderProvider.updateQuantity(
+                                          item.retailerId,
+                                          1,
+                                          size: item.size,
+                                        ),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                  ),
+                                ],
                               ),
                             ],
                           ),

@@ -3,6 +3,8 @@ import 'package:boty_flutter/services/api_service.dart';
 import 'package:boty_flutter/providers/order_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:boty_flutter/screens/scanner_screen.dart';
+import 'package:boty_flutter/utils/barcode_scanner_utils.dart';
 
 class ProductSelector extends StatefulWidget {
   const ProductSelector({super.key});
@@ -58,6 +60,76 @@ class _ProductSelectorState extends State<ProductSelector> {
     });
   }
 
+  Future<void> _scanBarcode() async {
+    // Navigate to ScannerScreen
+    final code = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (context) => const ScannerScreen()),
+    );
+
+    if (code != null && code.isNotEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Código escaneado. Procesando...'),
+            duration: Duration(milliseconds: 500),
+          ),
+        );
+      }
+
+      final parseResult = BarcodeScannerUtils.parse(code);
+      final sku = parseResult.sku;
+      final size = parseResult.size;
+
+      setState(() {
+        _searchController.text = sku;
+      });
+
+      _filterProducts(sku);
+
+      if (size != null) {
+        // Try auto-add
+        // Wait briefly for filter to apply if needed, though _filterProducts is synchronous on list
+        final product = _filteredProducts.firstWhere(
+          (p) =>
+              (p['retailer_id'] ?? '').toString().toUpperCase() ==
+              sku.toUpperCase(),
+          orElse: () => {},
+        );
+
+        if (product.isNotEmpty) {
+          _attemptAutoAdd(product, size);
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Producto $sku no encontrado en lista')),
+            );
+          }
+        }
+      }
+    }
+  }
+
+  void _attemptAutoAdd(Map<String, dynamic> product, String size) {
+    final stockKey = 'stock_${size.toLowerCase()}';
+    final stock = int.tryParse(product[stockKey]?.toString() ?? '0') ?? 0;
+
+    if (stock > 0) {
+      Navigator.pop(context, {
+        ...product,
+        'selected_size': size,
+        'quantity': 1, // Default to 1
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('¡Agregado! ${product['name']} ($size)')),
+      );
+    } else {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Sin stock para talla $size')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Dialog(
@@ -91,6 +163,11 @@ class _ProductSelectorState extends State<ProductSelector> {
               decoration: InputDecoration(
                 hintText: "Buscar producto...",
                 prefixIcon: const Icon(Icons.search),
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.qr_code_scanner, color: Colors.purple),
+                  onPressed: _scanBarcode,
+                  tooltip: 'Escanear desde Imagen',
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),

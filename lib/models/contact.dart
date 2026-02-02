@@ -20,11 +20,13 @@ class Contact {
     this.notes = "",
     this.tags = const [],
     this.lastActivity,
+    this.currentState = 'initial',
   });
 
   String notes;
   List<String> tags;
   DateTime? lastActivity;
+  String currentState;
 
   factory Contact.fromJson(Map<String, dynamic> json) {
     var list = json['history'] as List;
@@ -46,6 +48,7 @@ class Contact {
       tags:
           (json['tags'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
           [],
+      currentState: json['current_state'] ?? 'initial',
     );
   }
 }

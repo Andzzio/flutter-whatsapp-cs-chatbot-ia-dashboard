@@ -5,9 +5,12 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   audioplayers_linux
   file_selector_linux
+  printing
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
+  camera_linux
+  flutter_zxing
 )
 
 set(PLUGIN_BUNDLED_LIBRARIES)

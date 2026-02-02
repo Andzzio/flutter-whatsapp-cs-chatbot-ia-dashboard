@@ -5,6 +5,7 @@ import 'package:boty_flutter/screens/orders_screen.dart';
 import 'package:boty_flutter/screens/products_screen.dart';
 import 'package:boty_flutter/screens/settings_screen.dart';
 import 'package:boty_flutter/screens/snippets_screen.dart';
+import 'package:boty_flutter/screens/notifications_screen.dart';
 import 'package:boty_flutter/widgets/contact_card.dart';
 import 'package:boty_flutter/widgets/side_menu.dart'; // Import SideMenu
 import 'package:flutter/cupertino.dart';
@@ -91,6 +92,14 @@ class _HomeScreenState extends State<HomeScreen> {
       Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => const AnalyticsScreen()),
+      );
+      return;
+    }
+
+    if (item == "Notificaciones") {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const NotificationsScreen()),
       );
       return;
     }

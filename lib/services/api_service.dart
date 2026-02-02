@@ -6,9 +6,11 @@ import '../models/contact.dart';
 import '../models/snippet.dart';
 
 class ApiService {
+  // static const String baseUrl = "https://django-whatsapp-cs-chatbot-ia-backend.onrender.com";
+  // static const String baseUrl = "http://192.168.1.48:8000"; // SOLO PARA CASA 🏠
+  // IP Pública / Túnel (Ngrok) - PARA APK EMPRESARIAL 🌍
   static const String baseUrl =
-      "https://django-whatsapp-cs-chatbot-ia-backend.onrender.com";
-  // static const String baseUrl = "http://127.0.0.1:8000"; // Local Development
+      "https://cloistral-forcedly-elianna.ngrok-free.dev";
 
   Future<List<Contact>> syncContacts(
     String token, {
@@ -20,7 +22,7 @@ class ApiService {
     try {
       final response = await http.get(
         Uri.parse("$baseUrl/api/sync/?limit=$limit&offset=$offset"),
-        headers: {"Authorization": token},
+        headers: {"Authorization": token, "ngrok-skip-browser-warning": "true"},
       );
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -50,7 +52,11 @@ class ApiService {
 
       final response = await http.post(
         Uri.parse("$baseUrl/api/contacts/$phone/send-message/"),
-        headers: {"Authorization": token, "Content-Type": "application/json"},
+        headers: {
+          "Authorization": token,
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true",
+        },
         body: json.encode(body),
       );
       return response.statusCode == 200;
@@ -64,7 +70,11 @@ class ApiService {
     try {
       final response = await http.post(
         Uri.parse("$baseUrl/api/contacts/$phone/toggle-bot/"),
-        headers: {"Authorization": token, "Content-Type": "application/json"},
+        headers: {
+          "Authorization": token,
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true",
+        },
         body: json.encode({"is_active": isActive}),
       );
       return response.statusCode == 200;
@@ -78,7 +88,7 @@ class ApiService {
     try {
       final response = await http.post(
         Uri.parse("$baseUrl/api/contacts/$phone/mark-read/"),
-        headers: {"Authorization": token},
+        headers: {"Authorization": token, "ngrok-skip-browser-warning": "true"},
       );
       return response.statusCode == 200;
     } catch (e) {
@@ -92,7 +102,7 @@ class ApiService {
     try {
       final response = await http.get(
         Uri.parse("$baseUrl/api/products/"),
-        headers: {"Authorization": token},
+        headers: {"Authorization": token, "ngrok-skip-browser-warning": "true"},
       );
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -109,7 +119,7 @@ class ApiService {
     try {
       final response = await http.post(
         Uri.parse("$baseUrl/api/contacts/$phone/send-catalog/"),
-        headers: {"Authorization": token},
+        headers: {"Authorization": token, "ngrok-skip-browser-warning": "true"},
       );
       return response.statusCode == 200;
     } catch (e) {
@@ -126,7 +136,11 @@ class ApiService {
     try {
       final response = await http.post(
         Uri.parse("$baseUrl/api/contacts/$phone/send-product/"),
-        headers: {"Authorization": token, "Content-Type": "application/json"},
+        headers: {
+          "Authorization": token,
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true",
+        },
         body: json.encode({"retailer_id": retailerId}),
       );
       return response.statusCode == 200;
@@ -140,11 +154,24 @@ class ApiService {
     try {
       final response = await http.delete(
         Uri.parse("$baseUrl/api/messages/$msgId/delete/"),
-        headers: {"Authorization": token},
+        headers: {"Authorization": token, "ngrok-skip-browser-warning": "true"},
       );
       return response.statusCode == 200;
     } catch (e) {
       debugPrint("Error deletting message: $e");
+      return false;
+    }
+  }
+
+  Future<bool> resetMemory(String token, String phone) async {
+    try {
+      final response = await http.post(
+        Uri.parse("$baseUrl/api/contacts/$phone/reset-memory/"),
+        headers: {"Authorization": token, "ngrok-skip-browser-warning": "true"},
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint("Error resetting memory: $e");
       return false;
     }
   }
@@ -163,7 +190,11 @@ class ApiService {
 
       final response = await http.post(
         Uri.parse("$baseUrl/api/contacts/$phone/create-order/"),
-        headers: {"Authorization": token, "Content-Type": "application/json"},
+        headers: {
+          "Authorization": token,
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true",
+        },
         body: json.encode(body),
       );
 
@@ -197,7 +228,7 @@ class ApiService {
     try {
       final response = await http.get(
         Uri.parse('$baseUrl/api/dashboard-stats/'),
-        headers: {"Authorization": token},
+        headers: {"Authorization": token, "ngrok-skip-browser-warning": "true"},
       );
       if (response.statusCode == 200) {
         return json.decode(response.body);
@@ -213,7 +244,7 @@ class ApiService {
     try {
       final response = await http.get(
         Uri.parse('$baseUrl/api/snippets/'),
-        headers: {"Authorization": token},
+        headers: {"Authorization": token, "ngrok-skip-browser-warning": "true"},
       );
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -235,7 +266,11 @@ class ApiService {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/api/snippets/create/'),
-        headers: {"Authorization": token, "Content-Type": "application/json"},
+        headers: {
+          "Authorization": token,
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true",
+        },
         body: json.encode({"shortcut": shortcut, "content": content}),
       );
       return response.statusCode == 200;
@@ -249,7 +284,7 @@ class ApiService {
     try {
       final response = await http.delete(
         Uri.parse('$baseUrl/api/snippets/$id/'),
-        headers: {"Authorization": token},
+        headers: {"Authorization": token, "ngrok-skip-browser-warning": "true"},
       );
       return response.statusCode == 200;
     } catch (e) {
@@ -272,7 +307,10 @@ class ApiService {
         },
       );
 
-      final response = await http.get(uri, headers: {"Authorization": token});
+      final response = await http.get(
+        uri,
+        headers: {"Authorization": token, "ngrok-skip-browser-warning": "true"},
+      );
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -295,7 +333,10 @@ class ApiService {
         "$baseUrl/api/analytics/stats/",
       ).replace(queryParameters: {'period': period});
 
-      final response = await http.get(uri, headers: {"Authorization": token});
+      final response = await http.get(
+        uri,
+        headers: {"Authorization": token, "ngrok-skip-browser-warning": "true"},
+      );
 
       if (response.statusCode == 200) {
         return json.decode(response.body);
@@ -317,7 +358,10 @@ class ApiService {
         "$baseUrl/api/analytics/trends/",
       ).replace(queryParameters: {'period': period, 'metric': metric});
 
-      final response = await http.get(uri, headers: {"Authorization": token});
+      final response = await http.get(
+        uri,
+        headers: {"Authorization": token, "ngrok-skip-browser-warning": "true"},
+      );
 
       if (response.statusCode == 200) {
         return json.decode(response.body);
@@ -348,7 +392,11 @@ class ApiService {
 
       final response = await http.post(
         Uri.parse("$baseUrl/api/products/stock/"),
-        headers: {"Authorization": token, "Content-Type": "application/json"},
+        headers: {
+          "Authorization": token,
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true",
+        },
         body: json.encode(body),
       );
 
@@ -374,7 +422,7 @@ class ApiService {
     try {
       final response = await http.put(
         Uri.parse("$baseUrl/api/orders/$orderId/revert-stock/"),
-        headers: {"Authorization": token},
+        headers: {"Authorization": token, "ngrok-skip-browser-warning": "true"},
       );
 
       if (response.statusCode == 200) {
@@ -403,7 +451,11 @@ class ApiService {
     try {
       final response = await http.post(
         Uri.parse("$baseUrl/api/orders/$orderId/deduct-stock/"),
-        headers: {"Authorization": token, "Content-Type": "application/json"},
+        headers: {
+          "Authorization": token,
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true",
+        },
       );
 
       if (response.statusCode == 200) {
@@ -423,7 +475,7 @@ class ApiService {
     try {
       final response = await http.get(
         Uri.parse("$baseUrl/api/products/export/excel/"),
-        headers: {"Authorization": token},
+        headers: {"Authorization": token, "ngrok-skip-browser-warning": "true"},
       );
 
       if (response.statusCode == 200) {
@@ -448,6 +500,7 @@ class ApiService {
         Uri.parse("$baseUrl/api/products/import/excel/"),
       );
       request.headers["Authorization"] = token;
+      request.headers["ngrok-skip-browser-warning"] = "true";
       request.files.add(await http.MultipartFile.fromPath('file', filePath));
 
       final response = await request.send();
@@ -462,6 +515,76 @@ class ApiService {
     } catch (e) {
       debugPrint("Error uploading Excel: $e");
       return {"error": e.toString()};
+    }
+  }
+
+  // --- GENERIC HTTP METHODS (For new features like Notifications) ---
+  Future<dynamic> cancelableRequest(
+    String endpoint, {
+    Map<String, String>? params,
+  }) async {
+    // Simplified: Just a GET request for now
+    try {
+      //final uri = Uri.parse(
+      //"$baseUrl/$endpoint",
+      //).replace(queryParameters: params);
+      // We assume a default token or pass it.
+      // Ideally, specific methods should pass headers.
+      // For this refactor, we'll hardcode a "GET" wrapper that requires a token to be passed
+      // but since we need it generic, let's look at how providers use it.
+      // Provider passes 'api/notifications/'. We need the token.
+      // Since ApiService is stateless static, providers should manage token.
+      // But here we are adding instance methods without a visible token.
+      // FIX: Updates below.
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Future<dynamic> get(String endpoint, String token) async {
+    try {
+      final response = await http.get(
+        Uri.parse("$baseUrl/$endpoint"),
+        headers: {"Authorization": token, "ngrok-skip-browser-warning": "true"},
+      );
+      if (response.statusCode == 200) return json.decode(response.body);
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Future<dynamic> patch(
+    String endpoint,
+    String token,
+    Map<String, dynamic> body,
+  ) async {
+    try {
+      final response = await http.patch(
+        Uri.parse("$baseUrl/$endpoint"),
+        headers: {
+          "Authorization": token,
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true",
+        },
+        body: json.encode(body),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<dynamic> delete(String endpoint, String token) async {
+    try {
+      final response = await http.delete(
+        Uri.parse("$baseUrl/$endpoint"),
+        headers: {"Authorization": token, "ngrok-skip-browser-warning": "true"},
+      );
+      return response.statusCode == 200; // or 204
+    } catch (e) {
+      return false;
     }
   }
 }

@@ -2,6 +2,8 @@ import 'package:boty_flutter/models/contact.dart';
 import 'package:boty_flutter/providers/chat_provider.dart';
 import 'package:boty_flutter/services/api_service.dart';
 import 'package:flutter/material.dart';
+import 'package:boty_flutter/screens/scanner_screen.dart';
+import 'package:boty_flutter/utils/barcode_scanner_utils.dart';
 import 'package:provider/provider.dart';
 
 class CatalogDialog extends StatefulWidget {
@@ -37,6 +39,32 @@ class _CatalogDialogState extends State<CatalogDialog> {
         _filteredProducts = products;
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _scanBarcode() async {
+    final code = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (context) => const ScannerScreen()),
+    );
+
+    if (code != null && code.isNotEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Código detectado. Buscando...'),
+            duration: Duration(milliseconds: 500),
+          ),
+        );
+      }
+
+      final parseResult = BarcodeScannerUtils.parse(code);
+      final sku = parseResult.sku;
+
+      setState(() {
+        _searchController.text = sku;
+      });
+      _filterProducts(sku);
     }
   }
 
@@ -170,6 +198,14 @@ class _CatalogDialogState extends State<CatalogDialog> {
               decoration: InputDecoration(
                 hintText: "Buscar por nombre o ID...",
                 prefixIcon: const Icon(Icons.search),
+                suffixIcon: IconButton(
+                  icon: const Icon(
+                    Icons.qr_code_scanner,
+                    color: Colors.pinkAccent,
+                  ),
+                  onPressed: _scanBarcode,
+                  tooltip: 'Escanear Código',
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),

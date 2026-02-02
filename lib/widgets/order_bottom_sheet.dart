@@ -74,6 +74,19 @@ class OrderBottomSheet extends StatelessWidget {
             if (item['size'] != null && item['size'].toString().isNotEmpty) {
               itemText += " (Talla: ${item['size']})";
             }
+            // Add unit price or total item price
+            if (item['price'] != null) {
+              final unitPrice =
+                  double.tryParse(item['price'].toString()) ?? 0.0;
+              final quantity = int.tryParse(item['quantity'].toString()) ?? 1;
+              final lineTotal = unitPrice * quantity;
+
+              itemText += " - S/${lineTotal.toStringAsFixed(2)}";
+
+              if (quantity > 1) {
+                itemText += " (S/${unitPrice.toStringAsFixed(2)} c/u)";
+              }
+            }
             buffer.writeln(itemText);
           }
           buffer.writeln("");
@@ -321,8 +334,12 @@ class OrderBottomSheet extends StatelessWidget {
                                 children: [
                                   IconButton(
                                     icon: const Icon(Icons.remove, size: 20),
-                                    onPressed: () => orderProvider
-                                        .updateQuantity(item.retailerId, -1),
+                                    onPressed: () =>
+                                        orderProvider.updateQuantity(
+                                          item.retailerId,
+                                          -1,
+                                          size: item.size,
+                                        ),
                                     padding: EdgeInsets.zero,
                                     constraints: const BoxConstraints(),
                                   ),
@@ -340,8 +357,12 @@ class OrderBottomSheet extends StatelessWidget {
                                   ),
                                   IconButton(
                                     icon: const Icon(Icons.add, size: 20),
-                                    onPressed: () => orderProvider
-                                        .updateQuantity(item.retailerId, 1),
+                                    onPressed: () =>
+                                        orderProvider.updateQuantity(
+                                          item.retailerId,
+                                          1,
+                                          size: item.size,
+                                        ),
                                     padding: EdgeInsets.zero,
                                     constraints: const BoxConstraints(),
                                   ),

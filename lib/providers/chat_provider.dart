@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 // Message import removed (duplicate)
 import 'package:boty_flutter/services/notification_service.dart';
+import 'package:boty_flutter/services/websocket_service.dart';
 import 'dart:convert';
 
 enum ChatFilter { all, unread, botActive, botInactive, needsAttention }
@@ -89,6 +90,8 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
     if (_apiToken.isNotEmpty) {
       _startSyncLoop();
+      // Agregar carga inmediata de Dashboard para resolver "Demora mucho"
+      fetchDashboardStats(forceRefresh: true);
     }
   }
 
@@ -182,10 +185,13 @@ class ChatProvider extends ChangeNotifier {
     await prefs.setString('api_token', token);
     notifyListeners();
     _startSyncLoop();
+    // Fetch inicial al loguearse
+    fetchDashboardStats(forceRefresh: true);
   }
 
   Future<void> logout() async {
     _syncTimer?.cancel();
+    _dashboardTimer?.cancel(); // Cancel dashboard timer
     _apiToken = "";
     _contacts = [];
     _dashboardStats = null;
@@ -194,12 +200,37 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Timer? _dashboardTimer;
+
+  WebSocketService? _wsService;
+
   void _startSyncLoop() {
     _syncTimer?.cancel();
+    _dashboardTimer?.cancel(); // Reset both
+    // 1. Initial Sync (Moved down slightly or kept here)
+    // _channel cleanup replacing with service cleanup
+    _wsService?.disconnect();
 
+    // 1. Initial Sync
     _sync();
-    _syncTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+
+    // 2. WebSocket DISABLED (User Request) - Fallback to Polling Only
+    /*
+    _wsService = WebSocketService(ApiService.baseUrl);
+    _wsService!.connect();
+    // ... listeners commented out ...
+    */
+
+    // 3. Polling Only Mode (Every 5 seconds for better response)
+    _syncTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
       _sync();
+    });
+
+    // START Dashboard Sync (Cada 60s) para resolver "No se actualizan nunca"
+    _dashboardTimer = Timer.periodic(const Duration(seconds: 60), (timer) {
+      if (_apiToken.isNotEmpty) {
+        fetchDashboardStats(forceRefresh: true);
+      }
     });
   }
 
@@ -389,6 +420,7 @@ class ChatProvider extends ChangeNotifier {
       return stats;
     } catch (e) {
       debugPrint("Error fetching dashboard stats: $e");
+      notifyListeners(); // IMPORTANTE: Notificar para quitar spinners aunque falle
       return _dashboardStats ?? {};
     }
   }
@@ -400,8 +432,51 @@ class ChatProvider extends ChangeNotifier {
   @override
   void dispose() {
     _syncTimer?.cancel();
+    _wsService?.dispose();
     super.dispose();
   }
+
+  /*
+  void _handleNewMessage(Map<String, dynamic> msgData) {
+    debugPrint(
+      "🔥 WS Optimized Event: ${msgData['phone']} - ${msgData['text']}",
+    );
+
+    final phone = msgData['phone'];
+    final contactIndex = _contacts.indexWhere((c) => c.phone == phone);
+
+    if (contactIndex != -1) {
+      // 1. UPDATE EXISTING CONTACT
+      final msg = Message(
+        user: "Client", // Or name
+        text: msgData['text'] ?? "",
+        time: DateTime.now().toLocal().toString().substring(11, 16),
+        isBot: false, // msgData['type'] logic needed if bot sends it
+        type: msgData['type'] ?? 'text',
+      );
+
+      _contacts[contactIndex].messages.add(msg);
+      _contacts[contactIndex].lastActivity = DateTime.now();
+      _contacts[contactIndex].unreadCount += 1; // Increment unread
+
+      // Move to top
+      final contact = _contacts.removeAt(contactIndex);
+      _contacts.insert(0, contact);
+      notifyListeners();
+
+      // Notification
+      if (_areNotificationsEnabled &&
+          !contact.isMuted &&
+          contact.phone != _currentActiveChatPhone) {
+        _notificationService.showUserMessageNotification(contact, msg);
+      }
+    } else {
+      // 2. NEW CONTACT (Not in list) -> Fallback to Sync
+      debugPrint("⚠️ New contact via WS, running full sync.");
+      _sync();
+    }
+  }
+  */
 
   Future<void> sendMessage(String phone, String text, {int? replyToId}) async {
     if (_apiToken.isEmpty) return;
@@ -517,6 +592,34 @@ class ChatProvider extends ChangeNotifier {
     await _apiService.markMessagesAsRead(_apiToken, phone);
     // No need to sync immediately as the optimistic update handles the UI
     // The next periodic sync will confirm the state
+  }
+
+  Future<bool> resetContactMemory(String phone) async {
+    if (_apiToken.isEmpty) return false;
+
+    // Call API
+    final success = await _apiService.resetMemory(_apiToken, phone);
+
+    if (success) {
+      // Optimistic Update: Clear local messages
+      final index = _contacts.indexWhere((c) => c.phone == phone);
+      if (index != -1) {
+        _contacts[index] = Contact(
+          name: _contacts[index].name,
+          phone: _contacts[index].phone,
+          messages: [], // Clear messages
+          isBotActive: _contacts[index].isBotActive,
+          isMuted: _contacts[index].isMuted,
+          notes: _contacts[index].notes,
+          tags: _contacts[index].tags,
+          needsHumanAttention: _contacts[index].needsHumanAttention,
+          unreadCount: 0,
+          lastActivity: DateTime.now(),
+        );
+        notifyListeners();
+      }
+    }
+    return success;
   }
 
   // --- CRM Logic (Notes & Tags) ---

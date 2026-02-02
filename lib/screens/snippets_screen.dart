@@ -27,10 +27,14 @@ class _SnippetsScreenState extends State<SnippetsScreen> {
 
   Future<void> _loadSnippets() async {
     setState(() => _isLoading = true);
-    final token = Provider.of<ChatProvider>(context, listen: false).apiToken;
+    final chatProvider = Provider.of<ChatProvider>(context, listen: false);
     try {
-      final snippets = await _apiService.getSnippets(token);
-      setState(() => _snippets = snippets);
+      // Usar el proveedor para obtener los snippets y actualizar la memoria global
+      // Esto soluciona el problema de que el autocompletado use defaults si la carga inicial falló
+      await chatProvider.fetchSnippetsFromBackend(forceRefresh: true);
+
+      // Actualizar la lista local desde el proveedor (ya sincronizado)
+      setState(() => _snippets = chatProvider.snippets);
     } catch (e) {
       if (mounted)
         ScaffoldMessenger.of(

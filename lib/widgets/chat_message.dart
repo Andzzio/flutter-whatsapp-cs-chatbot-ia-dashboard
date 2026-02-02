@@ -8,6 +8,7 @@ import 'package:boty_flutter/providers/chat_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import '../models/message.dart';
 
 class ChatMessage extends StatelessWidget {
@@ -669,9 +670,11 @@ class ChatMessage extends StatelessWidget {
                   ),
                 )
               else
-                Text(
-                  message.text,
-                  style: TextStyle(color: textColor, fontSize: 16),
+                MarkdownBody(
+                  data: message.text,
+                  styleSheet: MarkdownStyleSheet(
+                    p: TextStyle(color: textColor, fontSize: 16),
+                  ),
                 ),
               const SizedBox(height: 4),
               Row(

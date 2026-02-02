@@ -7,6 +7,9 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:boty_flutter/utils/ticket_pdf_generator.dart';
+import 'package:boty_flutter/utils/barcode_scanner_utils.dart';
+import 'package:boty_flutter/screens/scanner_screen.dart';
 
 class ProductsScreen extends StatefulWidget {
   const ProductsScreen({super.key});
@@ -76,10 +79,13 @@ class _ProductsScreenState extends State<ProductsScreen> {
   List<Map<String, dynamic>> get _filteredProducts {
     if (_searchQuery.isEmpty) return _products;
     return _products.where((p) {
+      final query = _searchQuery.toLowerCase();
       final name = (p['name'] ?? p['product_name'] ?? '')
           .toString()
           .toLowerCase();
-      return name.contains(_searchQuery.toLowerCase());
+      final sku = (p['retailer_id'] ?? '').toString().toLowerCase();
+
+      return name.contains(query) || sku.contains(query);
     }).toList();
   }
 
@@ -188,7 +194,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
                       // Título de stocks
                       Text(
-                        'Stock por talla',
+                        'Stock por talla (e imprimir etiqueta)',
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
@@ -198,19 +204,39 @@ class _ProductsScreenState extends State<ProductsScreen> {
                       const SizedBox(height: 16),
 
                       // Stock S
-                      _buildStockField('Talla S', controllerS),
+                      _buildStockFieldWithPrint(
+                        'Talla S',
+                        controllerS,
+                        product,
+                        'S',
+                      ),
                       const SizedBox(height: 12),
 
                       // Stock M
-                      _buildStockField('Talla M', controllerM),
+                      _buildStockFieldWithPrint(
+                        'Talla M',
+                        controllerM,
+                        product,
+                        'M',
+                      ),
                       const SizedBox(height: 12),
 
                       // Stock L
-                      _buildStockField('Talla L', controllerL),
+                      _buildStockFieldWithPrint(
+                        'Talla L',
+                        controllerL,
+                        product,
+                        'L',
+                      ),
                       const SizedBox(height: 12),
 
                       // Stock XL
-                      _buildStockField('Talla XL', controllerXL),
+                      _buildStockFieldWithPrint(
+                        'Talla XL',
+                        controllerXL,
+                        product,
+                        'XL',
+                      ),
                       const SizedBox(height: 20),
 
                       // Switch disponibilidad
@@ -309,18 +335,39 @@ class _ProductsScreenState extends State<ProductsScreen> {
     controllerXL.dispose();
   }
 
-  Widget _buildStockField(String label, TextEditingController controller) {
-    return TextField(
-      controller: controller,
-      keyboardType: TextInputType.number,
-      decoration: InputDecoration(
-        labelText: label,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 12,
+  Widget _buildStockFieldWithPrint(
+    String label,
+    TextEditingController controller,
+    Map<String, dynamic> product,
+    String size,
+  ) {
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: controller,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              labelText: label,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 12,
+              ),
+            ),
+          ),
         ),
-      ),
+        const SizedBox(width: 8),
+        IconButton(
+          onPressed: () =>
+              TicketPdfGenerator.printTicket(product: product, size: size),
+          icon: const Icon(Icons.print),
+          color: Colors.grey[700],
+          tooltip: 'Imprimir Ticket Talla $size',
+        ),
+      ],
     );
   }
 
@@ -493,6 +540,47 @@ class _ProductsScreenState extends State<ProductsScreen> {
     }
   }
 
+  // Method _scanBarcode correctly placed
+
+  Future<void> _scanBarcode() async {
+    final code = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (context) => const ScannerScreen()),
+    );
+
+    if (code != null && code.isNotEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Procesando código scanned...'),
+            duration: Duration(milliseconds: 500),
+          ),
+        );
+      }
+
+      final parseResult = BarcodeScannerUtils.parse(code);
+      final sku = parseResult.sku;
+      final size = parseResult.size;
+
+      if (mounted) {
+        _searchController.text = sku;
+        setState(() {
+          _searchQuery = sku;
+        });
+
+        String msg = "Código detectado: $sku";
+        if (size != null) {
+          msg += " (Talla: $size)";
+        }
+
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), backgroundColor: Colors.green),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -543,6 +631,11 @@ class _ProductsScreenState extends State<ProductsScreen> {
                   Icons.search,
                   color: Colors.grey[400],
                   size: 22,
+                ),
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.qr_code_scanner, color: Colors.purple),
+                  onPressed: _scanBarcode,
+                  tooltip: 'Escanear desde Imagen',
                 ),
                 filled: true,
                 fillColor: Colors.grey[100],

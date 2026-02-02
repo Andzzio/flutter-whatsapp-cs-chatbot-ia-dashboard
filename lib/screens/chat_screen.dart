@@ -701,6 +701,38 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  String _getStateLabel(String state) {
+    switch (state) {
+      case 'initial':
+        return 'Inicial';
+      case 'browsing_catalog':
+        return 'Viendo Catálogo';
+      case 'product_selection':
+        return 'Seleccionando';
+      case 'confirm_cart':
+        return 'Carrito';
+      case 'collect_address':
+        return 'Dirección';
+      case 'select_payment':
+        return 'Pago';
+      case 'upload_proof':
+        return 'Comprobante';
+      case 'completed':
+        return 'Completado';
+      case 'locked_human':
+        return 'HUMANO';
+      default:
+        return state;
+    }
+  }
+
+  Color _getStateColor(String state) {
+    if (state == 'locked_human') return Colors.red;
+    if (state == 'completed') return Colors.green;
+    if (state == 'initial') return Colors.grey;
+    return Colors.blue;
+  }
+
   bool _showDesktopDrawer = false;
 
   @override
@@ -756,12 +788,53 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
-                      Text(
-                        currentContact.phone,
-                        style: TextStyle(
-                          color: Theme.of(context).textTheme.bodySmall?.color,
-                          fontSize: 12,
-                        ),
+
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8.0,
+                        runSpacing: 4.0,
+                        children: [
+                          Text(
+                            currentContact.phone,
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).textTheme.bodySmall?.color,
+                              fontSize: 12,
+                            ),
+                          ),
+                          if (currentContact.currentState != 'initial')
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 1,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _getStateColor(
+                                  currentContact.currentState,
+                                ).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(
+                                  color: _getStateColor(
+                                    currentContact.currentState,
+                                  ).withOpacity(0.5),
+                                  width: 0.5,
+                                ),
+                              ),
+                              child: Text(
+                                _getStateLabel(
+                                  currentContact.currentState,
+                                ).toUpperCase(),
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                  color: _getStateColor(
+                                    currentContact.currentState,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ],
                   ),
@@ -869,6 +942,56 @@ class _ChatScreenState extends State<ChatScreen> {
                         duration: const Duration(seconds: 2),
                       ),
                     );
+                  } else if (value == 'reset_memory' ||
+                      value == 'reset_state') {
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: Text(
+                          value == 'reset_state'
+                              ? "Reiniciar Estado"
+                              : "Borrar Memoria",
+                        ),
+                        content: Text(
+                          value == 'reset_state'
+                              ? "Esto devolverá el bot al estado INICIAL si se quedó trabado. (También borra el historial temporal)."
+                              : "Esto borrará TODO el historial de mensajes con este contacto.",
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text("Cancelar"),
+                          ),
+                          TextButton(
+                            onPressed: () async {
+                              Navigator.pop(ctx);
+                              // We use the same API for now as it does both
+                              final success = await provider.resetContactMemory(
+                                currentContact.phone,
+                              );
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      success
+                                          ? "Estado Reiniciado Correctamente."
+                                          : "Error al reiniciar.",
+                                    ),
+                                    backgroundColor: success
+                                        ? Colors.green
+                                        : Colors.red,
+                                  ),
+                                );
+                              }
+                            },
+                            child: const Text(
+                              "Confirmar",
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
                   }
                 },
                 itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
@@ -901,6 +1024,34 @@ class _ChatScreenState extends State<ChatScreen> {
                     child: ListTile(
                       leading: Icon(Icons.copy_rounded),
                       title: Text('Copiar Número'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                  const PopupMenuItem<String>(
+                    value: 'reset_memory',
+                    child: ListTile(
+                      leading: Icon(
+                        Icons.cleaning_services_rounded,
+                        color: Colors.red,
+                      ),
+                      title: Text(
+                        'Borrar Memoria (Reset)',
+                        style: TextStyle(color: Colors.red),
+                      ),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                  const PopupMenuItem<String>(
+                    value: 'reset_state',
+                    child: ListTile(
+                      leading: Icon(
+                        Icons.settings_backup_restore_rounded,
+                        color: Colors.orange,
+                      ),
+                      title: Text(
+                        'Reiniciar Estado (Bot)',
+                        style: TextStyle(color: Colors.orange),
+                      ),
                       contentPadding: EdgeInsets.zero,
                     ),
                   ),

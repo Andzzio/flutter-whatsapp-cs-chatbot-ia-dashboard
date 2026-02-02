@@ -95,6 +95,15 @@ class SideMenu extends StatelessWidget {
             isMobile: isMobile,
             onTap: () => onSelect("Estadísticas"),
           ),
+          _SideMenuItem(
+            icon: Icons.notifications_none,
+            label: "Notificaciones",
+            isActive: selectedItem == "Notificaciones",
+            badgeCount: 0, // TODO: Connect to provider
+            showLabel: !compact || isMobile,
+            isMobile: isMobile,
+            onTap: () => onSelect("Notificaciones"),
+          ),
 
           const Spacer(),
           _SideMenuItem(

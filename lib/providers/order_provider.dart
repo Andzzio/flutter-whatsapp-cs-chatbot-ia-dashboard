@@ -89,13 +89,15 @@ class OrderProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void removeFromCart(String retailerId) {
-    _cartItems.removeWhere((i) => i.retailerId == retailerId);
+  void removeFromCart(String retailerId, {String? size}) {
+    _cartItems.removeWhere((i) => i.retailerId == retailerId && i.size == size);
     notifyListeners();
   }
 
-  void updateQuantity(String retailerId, int delta) {
-    final index = _cartItems.indexWhere((i) => i.retailerId == retailerId);
+  void updateQuantity(String retailerId, int delta, {String? size}) {
+    final index = _cartItems.indexWhere(
+      (i) => i.retailerId == retailerId && i.size == size,
+    );
     if (index != -1) {
       final newQty = _cartItems[index].quantity + delta;
       if (newQty > 0) {

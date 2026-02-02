@@ -166,9 +166,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                 labels: List<String>.from(
                                   _trends!['labels'] ?? [],
                                 ),
-                                values: List<dynamic>.from(
-                                  _trends!['values'] ?? [],
-                                ).map((e) => (e as num).toDouble()).toList(),
+                                values:
+                                    List<dynamic>.from(_trends!['values'] ?? [])
+                                        .map(
+                                          (e) =>
+                                              num.tryParse(
+                                                e.toString(),
+                                              )?.toDouble() ??
+                                              0.0,
+                                        )
+                                        .toList(),
                                 period: _selectedPeriod,
                               )
                             else
